@@ -159,7 +159,9 @@ def analyze(
         posture_config = posture_config.model_copy(update={"exclude_rules": merged})
 
     findings: List[Finding] = []
-    findings.extend(run_regression_check(history, config.checks.regression))
+    findings.extend(
+        run_regression_check(history, config.checks.regression, workspace=workspace)
+    )
     findings.extend(run_latency_check(history, monitor, config.checks.latency))
     findings.extend(run_errors_check(monitor, foundry, config.checks.errors))
     findings.extend(

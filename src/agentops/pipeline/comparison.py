@@ -12,6 +12,18 @@ from agentops.core.results import (
     ComparisonRow,
     RunResult,
 )
+from agentops.pipeline.regression_insight import (
+    LOWER_IS_BETTER_METRICS,
+    build_regression_insight,
+    metric_improved,
+    metric_threshold_criteria,
+    resolve_report_url,
+)
+
+# Re-exported for callers that only need the metric-direction concept
+# without pulling in regression-insight building - the single source of
+# truth lives in `regression_insight` (see its module comment for why).
+__all__ = ["LOWER_IS_BETTER_METRICS", "metric_improved", "load_baseline", "build_comparison"]
 
 
 def load_baseline(path: Path) -> RunResult:
@@ -23,14 +35,17 @@ def load_baseline(path: Path) -> RunResult:
     return RunResult.model_validate(payload)
 
 
-def _direction(current: Optional[float], baseline: Optional[float]) -> str:
-    if current is None or baseline is None:
+def _direction(
+    metric: str,
+    current: Optional[float],
+    baseline: Optional[float],
+    *,
+    criteria: Optional[str] = None,
+) -> str:
+    improved = metric_improved(metric, current, baseline, criteria=criteria)
+    if improved is None:
         return "unchanged"
-    if current > baseline:
-        return "improved"
-    if current < baseline:
-        return "regressed"
-    return "unchanged"
+    return "improved" if improved else "regressed"
 
 
 def _row_passed(row_metrics: List[Dict[str, float | None]]) -> bool:
@@ -43,6 +58,7 @@ def build_comparison(
     current: RunResult,
     baseline: RunResult,
     baseline_path: Path,
+    workspace: Optional[Path] = None,
 ) -> ComparisonInfo:
     metrics: List[ComparisonMetric] = []
     metric_names = sorted(set(current.aggregate_metrics) | set(baseline.aggregate_metrics))
@@ -60,7 +76,12 @@ def build_comparison(
                 current=current_value,
                 baseline=baseline_value,
                 delta=delta,
-                direction=_direction(current_value, baseline_value),
+                direction=_direction(
+                    name,
+                    current_value,
+                    baseline_value,
+                    criteria=metric_threshold_criteria(name, current, baseline),
+                ),
             )
         )
 
@@ -99,10 +120,33 @@ def build_comparison(
             )
         )
 
+    insight = None
+    if current.commit is not None and baseline.commit is not None:
+        regressed = [m for m in metrics if m.direction == "regressed"]
+        if regressed:
+            insight = build_regression_insight(
+                baseline,
+                current,
+                metrics=[m.metric for m in regressed],
+                workspace=workspace,
+                # `baseline` is a prior, fully-published run - a sidecar
+                # `cloud_evaluation.json` next to it, if any, is complete.
+                # `current` is still mid-orchestration here (persisted
+                # after this call, Classic Foundry `publish: true` later
+                # still) - only its own in-memory config can be checked.
+                # For `execution: local` + `publish: true`,
+                # orchestrator._publish_to_foundry_safely patches this
+                # value in and re-persists once that later publish step
+                # actually completes, so it isn't permanently `None`.
+                from_report_url=resolve_report_url(baseline, results_path=baseline_path),
+                to_report_url=resolve_report_url(current),
+            )
+
     return ComparisonInfo(
         baseline_path=str(baseline_path),
         baseline_started_at=baseline.started_at,
         baseline_overall_passed=baseline.summary.overall_passed,
         metrics=metrics,
         rows=rows,
+        insight=insight,
     )

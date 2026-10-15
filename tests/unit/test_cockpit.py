@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,7 +11,9 @@ from urllib.parse import unquote
 
 import pytest
 
+from agentops.agent import cockpit as cockpit_module
 from agentops.agent.cockpit import (
+    _load_eval_runs,
     build_cockpit_payload,
     render_cockpit_html,
 )
@@ -1788,3 +1791,563 @@ def test_cockpit_html_agentless_not_blanket_no_go(tmp_path: Path):
     assert "No evaluation target configured" in html
     assert "OBSERVABILITY ONLY" not in html
     assert "NO-GO" not in html
+
+
+# ---------------------------------------------------------------------------
+# Version history (commit + changed-inputs projection)
+# ---------------------------------------------------------------------------
+
+
+def _write_full_eval_run(
+    workspace: Path,
+    *,
+    timestamp_dir: str,
+    accuracy: float,
+    avg_latency_seconds: float | None = None,
+    version: str = "3",
+    deployment: str = "gpt-4o",
+    commit_sha: str | None,
+    started_at: str,
+    report_url: str | None = None,
+) -> None:
+    """Writes a ``results.json`` with every field ``RunResult`` requires.
+
+    Unlike ``_write_eval_run`` (used elsewhere in this file for the basic
+    sparkline-card projection, which tolerates a minimal payload), the
+    version-history diff needs a fully valid ``RunResult`` to reload and
+    compare - so this helper fills in ``dataset_path``/``evaluators``/rows
+    too.
+    """
+    out = workspace / ".agentops" / "results" / timestamp_dir
+    out.mkdir(parents=True, exist_ok=True)
+    aggregate_metrics: dict = {"accuracy": accuracy}
+    if avg_latency_seconds is not None:
+        aggregate_metrics["avg_latency_seconds"] = avg_latency_seconds
+    payload: dict = {
+        "version": 1,
+        "started_at": started_at,
+        "finished_at": started_at,
+        "duration_seconds": 1.0,
+        "target": {
+            "kind": "foundry_prompt",
+            "raw": f"greeter:{version}",
+            "name": "greeter",
+            "version": version,
+            "deployment": deployment,
+        },
+        "dataset_path": "data/smoke.jsonl",
+        "evaluators": ["CoherenceEvaluator"],
+        "rows": [],
+        "aggregate_metrics": aggregate_metrics,
+        "thresholds": [],
+        "summary": {
+            "items_total": 1,
+            "items_passed_all": 1,
+            "items_pass_rate": 1.0,
+            "thresholds_total": 0,
+            "thresholds_passed": 0,
+            "threshold_pass_rate": 1.0,
+            "overall_passed": True,
+        },
+        "config": {},
+    }
+    if commit_sha is not None:
+        payload["commit"] = {
+            "sha": commit_sha,
+            "short_sha": commit_sha[:7],
+            "subject": "A commit",
+            "author": "Dev",
+            "authored_at": started_at,
+            "source": "ci",
+        }
+    (out / "results.json").write_text(json.dumps(payload), encoding="utf-8")
+    if report_url is not None:
+        (out / "cloud_evaluation.json").write_text(
+            json.dumps({"report_url": report_url}), encoding="utf-8"
+        )
+
+
+def test_project_run_includes_commit_and_lineage_key(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 1
+    run = runs[0]
+    assert run["commit"]["sha"] == "a" * 40
+    assert run["version_lineage_key"] is not None
+    assert "_full_result" not in run
+    assert run["changed_inputs"] == []
+    assert run["regressed"] is False
+
+
+def test_project_run_commit_is_none_when_unknown(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha=None,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert runs[0]["commit"] is None
+    assert runs[0]["changed_inputs"] == []
+
+
+def test_version_history_names_changes_vs_previous_run(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        version="3",
+        deployment="gpt-4o",
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.79,
+        version="4",
+        deployment="gpt-4o-mini",
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 2
+    first, second = runs
+    assert first["changed_inputs"] == []
+    assert first["regressed"] is False
+
+    fields = {c["field"] for c in second["changed_inputs"]}
+    assert fields == {"system_prompt", "model"}
+    assert second["regressed"] is True
+
+
+def _write_direct_model_eval_run(
+    workspace: Path,
+    *,
+    timestamp_dir: str,
+    deployment: str,
+    accuracy: float,
+    commit_sha: str,
+    started_at: str,
+) -> None:
+    """A ``model:<deployment>`` target has no ``name``/``url`` - only
+    ``raw`` (which embeds the deployment itself, e.g. ``"model:gpt-4o"``)
+    and ``deployment``."""
+    out = workspace / ".agentops" / "results" / timestamp_dir
+    out.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "started_at": started_at,
+        "finished_at": started_at,
+        "duration_seconds": 1.0,
+        "target": {
+            "kind": "model_direct",
+            "raw": f"model:{deployment}",
+            "deployment": deployment,
+        },
+        "dataset_path": "data/smoke.jsonl",
+        "evaluators": ["CoherenceEvaluator"],
+        "rows": [],
+        "aggregate_metrics": {"accuracy": accuracy},
+        "thresholds": [],
+        "summary": {
+            "items_total": 1,
+            "items_passed_all": 1,
+            "items_pass_rate": 1.0,
+            "thresholds_total": 0,
+            "thresholds_passed": 0,
+            "threshold_pass_rate": 1.0,
+            "overall_passed": True,
+        },
+        "config": {},
+        "commit": {
+            "sha": commit_sha,
+            "short_sha": commit_sha[:7],
+            "subject": "A commit",
+            "author": "Dev",
+            "authored_at": started_at,
+            "source": "ci",
+        },
+    }
+    (out / "results.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_version_lineage_key_ignores_deployment_for_direct_model_targets(
+    tmp_path: Path,
+):
+    """``raw`` embeds the deployment for `model:<deployment>` targets
+    (unlike `name`/`url` for every other target kind) - falling back to it
+    for the version-lineage identity would make a deployment change start
+    a brand new lineage instead of being detected as a change within the
+    same one, defeating the entire point of this view."""
+    _write_direct_model_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        deployment="gpt-4o",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_direct_model_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        deployment="gpt-4o-mini",
+        accuracy=0.79,
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 2
+    first, second = runs
+    assert first["version_lineage_key"] == second["version_lineage_key"]
+    fields = {c["field"] for c in second["changed_inputs"]}
+    assert fields == {"model"}
+    assert second["regressed"] is True
+
+
+def test_version_history_latency_improvement_is_not_flagged_as_regressed(
+    tmp_path: Path,
+):
+    """``avg_latency_seconds`` is lower-is-better - a drop in latency (a
+    real improvement) must not be reported as a regression just because the
+    raw number went down."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        avg_latency_seconds=8.0,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.91,
+        avg_latency_seconds=3.0,
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 2
+    _first, second = runs
+    assert second["regressed"] is False
+
+
+def test_version_history_latency_regression_is_flagged(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        avg_latency_seconds=3.0,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.91,
+        avg_latency_seconds=8.0,
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 2
+    _first, second = runs
+    assert second["regressed"] is True
+    assert second["regressed_metrics"] == ["avg_latency_seconds"]
+
+
+def test_version_history_names_every_regressed_metric_not_just_a_boolean(
+    tmp_path: Path,
+):
+    """accuracy and avg_latency_seconds both regress at once - both must be
+    named in `regressed_metrics` (and in the rendered badge), not collapsed
+    into a single generic "regressed" flag."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        avg_latency_seconds=3.0,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.79,
+        avg_latency_seconds=8.0,
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 2
+    _first, second = runs
+    assert second["regressed_metrics"] == ["accuracy", "avg_latency_seconds"]
+
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+    assert "regressed: accuracy, avg_latency_seconds" in html
+
+
+def test_version_history_links_both_sides_to_foundry_when_both_published(
+    tmp_path: Path,
+):
+    """A regressed row must link out to both the baseline's and its own
+    Foundry Evaluations page - the same data as
+    ``RegressionInsight.from_report_url``/``to_report_url``, just surfaced
+    in Cockpit instead of report.md."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+        report_url="https://ai.azure.com/foundry/baseline",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.79,
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+        report_url="https://ai.azure.com/foundry/current",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+    assert len(runs) == 2
+    _first, second = runs
+    assert second["previous_cloud_report_url"].startswith(
+        "https://ai.azure.com/foundry/baseline"
+    )
+    assert second["cloud_report_url"].startswith("https://ai.azure.com/foundry/current")
+
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+    assert "baseline in Foundry</a>" in html
+    assert "this run in Foundry</a>" in html
+
+
+def test_version_history_omits_foundry_links_when_not_published(tmp_path: Path):
+    """Neither run was published (no ``cloud_evaluation.json`` sidecar) -
+    the Foundry links must be omitted silently, not shown as broken links
+    or placeholders."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.79,
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+    assert len(runs) == 2
+    _first, second = runs
+    assert second["regressed"] is True
+    assert second["previous_cloud_report_url"] is None
+    assert second["cloud_report_url"] is None
+
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+    assert "baseline in Foundry" not in html
+    assert "this run in Foundry" not in html
+
+
+def test_project_run_is_cached_by_path_and_mtime(tmp_path: Path, monkeypatch):
+    """Re-rendering the cockpit without any new run must not re-parse and
+    re-validate (``RunResult.model_validate``) the same unchanged
+    ``results.json`` files again - that cost is paid once per file, not
+    once per render, as long as the caller passes the same explicit
+    ``run_cache`` dict both times (there is no implicit/global cache)."""
+    run_cache: dict = {}
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+
+    calls = {"count": 0}
+    original = cockpit_module._project_run_uncached
+
+    def _counting_uncached(path, *, run_id):
+        calls["count"] += 1
+        return original(path, run_id=run_id)
+
+    monkeypatch.setattr(cockpit_module, "_project_run_uncached", _counting_uncached)
+
+    first = _load_eval_runs(tmp_path, run_cache=run_cache)
+    second = _load_eval_runs(tmp_path, run_cache=run_cache)
+
+    assert calls["count"] == 1
+    assert first[0]["run_id"] == second[0]["run_id"]
+    assert first[0]["commit"] == second[0]["commit"]
+
+
+def test_project_run_without_cache_reparses_every_call(tmp_path: Path, monkeypatch):
+    """The default (``run_cache=None``) does no caching at all - a caller
+    that never opts in never gets stale data, by construction."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+
+    calls = {"count": 0}
+    original = cockpit_module._project_run_uncached
+
+    def _counting_uncached(path, *, run_id):
+        calls["count"] += 1
+        return original(path, run_id=run_id)
+
+    monkeypatch.setattr(cockpit_module, "_project_run_uncached", _counting_uncached)
+
+    _load_eval_runs(tmp_path)
+    _load_eval_runs(tmp_path)
+
+    assert calls["count"] == 2
+
+
+def test_project_run_cache_invalidated_on_file_change(tmp_path: Path, monkeypatch):
+    run_cache: dict = {}
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+
+    first = _load_eval_runs(tmp_path, run_cache=run_cache)
+    assert first[0]["metrics"]["accuracy"] == 0.91
+
+    results_path = tmp_path / ".agentops" / "results" / "2026-09-01T10-00-00Z" / "results.json"
+    payload = json.loads(results_path.read_text(encoding="utf-8"))
+    payload["aggregate_metrics"]["accuracy"] = 0.42
+    results_path.write_text(json.dumps(payload), encoding="utf-8")
+    # Force a distinct mtime even on filesystems with coarse mtime
+    # resolution, so the cache is guaranteed to observe the change.
+    new_mtime = results_path.stat().st_mtime + 1
+    os.utime(results_path, (new_mtime, new_mtime))
+
+    second = _load_eval_runs(tmp_path, run_cache=run_cache)
+    assert second[0]["metrics"]["accuracy"] == 0.42
+
+
+def test_cockpit_html_renders_version_history_section(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        version="3",
+        deployment="gpt-4o",
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.79,
+        version="4",
+        deployment="gpt-4o-mini",
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+
+    assert "Evaluation Version History" in html
+    assert "aaaaaaa" in html
+    assert "bbbbbbb" in html
+    assert "model changed from gpt-4o to gpt-4o-mini" in html
+    assert "regressed" in html
+
+
+def test_version_history_tolerates_non_numeric_metric_value(tmp_path: Path):
+    """`_project_run_uncached` keeps projecting a run even when full
+    `RunResult` validation fails, so a malformed/historical results.json
+    can carry a non-numeric metric value - rendering must skip it rather
+    than raise and take down the whole page."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    results_path = tmp_path / ".agentops" / "results" / "2026-09-01T10-00-00Z" / "results.json"
+    payload = json.loads(results_path.read_text(encoding="utf-8"))
+    payload["aggregate_metrics"]["coherence"] = "n/a"
+    results_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    cockpit_payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(cockpit_payload)  # must not raise
+
+    assert "Evaluation Version History" in html
+    assert "accuracy=0.910" in html
+    assert "coherence=" not in html
+
+
+def test_cockpit_html_version_history_empty_state(tmp_path: Path):
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+
+    assert "Evaluation Version History" in html
+    assert "No evaluation runs recorded yet" in html
+
+
+def test_version_history_shown_even_when_nothing_regressed(tmp_path: Path):
+    """The history list is not gated on regression (User Story 2)."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.79,
+        version="3",
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.91,
+        version="4",
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    second = runs[1]
+    assert second["regressed"] is False
+    assert any(c["field"] == "system_prompt" for c in second["changed_inputs"])

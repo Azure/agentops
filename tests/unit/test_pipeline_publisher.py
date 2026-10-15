@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import types
 from pathlib import Path
@@ -11,6 +12,10 @@ from unittest import mock
 import pytest
 
 from agentops.core.results import (
+    CommitInfo,
+    ComparisonInfo,
+    RegressedMetric,
+    RegressionInsight,
     RowMetric,
     RowResult,
     RunResult,
@@ -165,7 +170,7 @@ def test_orchestrator_skips_publish_when_disabled(tmp_path: Path):
     result = _build_run_result()
 
     with mock.patch.object(publisher, "publish_to_foundry") as fake:
-        orchestrator._publish_to_foundry_safely(result, config, output_dir)
+        orchestrator._publish_to_foundry_safely(result, config, output_dir, workspace=tmp_path)
 
     fake.assert_not_called()  # never reached because publish is None
     # The helper itself only runs when publish == "foundry"; we verify the
@@ -190,7 +195,7 @@ def test_orchestrator_swallows_publish_errors(tmp_path: Path):
         publisher, "publish_to_foundry", side_effect=ImportError("no SDK")
     ):
         # Must not raise.
-        orchestrator._publish_to_foundry_safely(result, config, output_dir)
+        orchestrator._publish_to_foundry_safely(result, config, output_dir, workspace=tmp_path)
 
     assert not (output_dir / "cloud_evaluation.json").exists()
 
@@ -215,7 +220,7 @@ def test_orchestrator_writes_cloud_evaluation_metadata(tmp_path: Path):
         evaluation_name="agentops-eval-abc",
     )
     with mock.patch.object(publisher, "publish_to_foundry", return_value=fake_publish):
-        orchestrator._publish_to_foundry_safely(result, config, output_dir)
+        orchestrator._publish_to_foundry_safely(result, config, output_dir, workspace=tmp_path)
 
     meta_path = output_dir / "cloud_evaluation.json"
     assert meta_path.exists()
@@ -223,6 +228,79 @@ def test_orchestrator_writes_cloud_evaluation_metadata(tmp_path: Path):
     payload = json.loads(meta_path.read_text(encoding="utf-8"))
     assert payload["report_url"].endswith("/abc")
     assert payload["evaluation_name"] == "agentops-eval-abc"
+
+
+def _commit(sha: str) -> CommitInfo:
+    return CommitInfo(
+        sha=sha,
+        short_sha=sha[:7],
+        subject="A commit",
+        author="Dev",
+        authored_at="2026-09-01T10:00:00+00:00",
+        source="ci",
+    )
+
+
+def test_orchestrator_patches_to_report_url_after_publish_completes(tmp_path: Path):
+    """``build_comparison`` can only leave ``to_report_url=None`` for the
+    run it's building - that run's own publish (if any) hasn't happened
+    yet. Once this publish step completes, the already-persisted
+    results.json/report.md must be patched with the real link rather than
+    permanently missing it."""
+    from agentops.core.agentops_config import AgentOpsConfig
+    from agentops.pipeline import orchestrator, reporter
+
+    config = AgentOpsConfig(
+        version=1,
+        agent="model:gpt-4o-mini",
+        dataset=Path("dataset.jsonl"),
+        publish=True,
+        project_endpoint="https://contoso.services.ai.azure.com/api/projects/p",
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    result = _build_run_result()
+    result.comparison = ComparisonInfo(
+        baseline_path=".agentops/baseline/results.json",
+        metrics=[],
+        insight=RegressionInsight(
+            from_run_id="2026-09-01T10:00:00+00:00",
+            to_run_id="2026-09-10T14:03:00+00:00",
+            from_commit=_commit("a" * 40),
+            to_commit=_commit("b" * 40),
+            regressed_metrics=[
+                RegressedMetric(metric="f1_score", from_value=0.91, to_value=0.75)
+            ],
+            changed_inputs=[],
+            explanation="Run aaaaaaa -> bbbbbbb: f1_score dropped from 0.91 to 0.75.",
+            commits_available_locally=False,
+            from_report_url="https://ai.azure.com/foundry/baseline",
+            to_report_url=None,
+        ),
+    )
+    # Simulate _persist already having run before this publish step, with
+    # to_report_url still None at that point.
+    (output_dir / "results.json").write_text(
+        json.dumps(result.model_dump(mode="json"), indent=2), encoding="utf-8"
+    )
+    (output_dir / "report.md").write_text(reporter.render(result), encoding="utf-8")
+
+    fake_publish = publisher.PublishResult(
+        studio_url="https://ai.azure.com/projects/p/evaluations/current",
+        evaluation_name="agentops-eval-current",
+    )
+    with mock.patch.object(publisher, "publish_to_foundry", return_value=fake_publish):
+        orchestrator._publish_to_foundry_safely(result, config, output_dir, workspace=tmp_path)
+
+    assert result.comparison.insight.to_report_url == (
+        "https://ai.azure.com/projects/p/evaluations/current"
+    )
+    persisted = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+    assert persisted["comparison"]["insight"]["to_report_url"] == (
+        "https://ai.azure.com/projects/p/evaluations/current"
+    )
+    report_text = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "https://ai.azure.com/projects/p/evaluations/current" in report_text
 
 
 def test_run_evaluation_cloud_uses_cloud_runner_and_does_not_invoke_locally(

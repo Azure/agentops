@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,9 +9,107 @@ from types import SimpleNamespace
 import pytest
 
 from agentops.core.agentops_config import AgentOpsConfig
-from agentops.core.results import RowMetric
+from agentops.core.results import RowMetric, RunResult, RunSummary, TargetInfo
 from agentops.pipeline import orchestrator
+from agentops.pipeline.orchestrator import RunOptions
 from agentops.services import dataset_source as dataset_source_service
+
+
+def _run_git(args: list[str], *, cwd: Path) -> str:
+    completed = subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+    )
+    return completed.stdout.strip()
+
+
+def _init_repo(path: Path, *, commit_subject: str) -> str:
+    path.mkdir(parents=True, exist_ok=True)
+    _run_git(["init"], cwd=path)
+    _run_git(["config", "user.email", "dev@example.com"], cwd=path)
+    _run_git(["config", "user.name", "Dev"], cwd=path)
+    (path / "README.md").write_text(commit_subject, encoding="utf-8")
+    _run_git(["add", "README.md"], cwd=path)
+    _run_git(["commit", "-m", commit_subject], cwd=path)
+    return _run_git(["rev-parse", "HEAD"], cwd=path)
+
+
+def _minimal_run_result() -> RunResult:
+    return RunResult(
+        started_at="2026-10-07T00:00:00+00:00",
+        finished_at="2026-10-07T00:00:01+00:00",
+        duration_seconds=1.0,
+        target=TargetInfo(kind="http", raw="https://example.test/chat"),
+        dataset_path="dataset.jsonl",
+        summary=RunSummary(
+            items_total=0,
+            items_passed_all=0,
+            items_pass_rate=1.0,
+            thresholds_total=0,
+            thresholds_passed=0,
+            threshold_pass_rate=1.0,
+            overall_passed=True,
+        ),
+    )
+
+
+def test_commit_resolved_from_config_workspace_not_process_cwd(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Regression test: git must run against the config's repo, not cwd.
+
+    Reproduces the reported scenario of invoking ``agentops eval run
+    --config /work/my-agent/agentops.yaml`` from an unrelated cwd
+    (``/work/other-project``) - the recorded commit must be the config
+    repo's HEAD, never the cwd repo's.
+    """
+    for env_var in ("GITHUB_SHA", "BUILD_SOURCEVERSION", "Build.SourceVersion"):
+        monkeypatch.delenv(env_var, raising=False)
+
+    agent_repo = tmp_path / "my-agent"
+    agent_sha = _init_repo(agent_repo, commit_subject="agent repo commit")
+    other_repo = tmp_path / "other-project"
+    other_sha = _init_repo(other_repo, commit_subject="unrelated repo commit")
+    assert agent_sha != other_sha
+
+    config_path = agent_repo / "agentops.yaml"
+    config_path.write_text("version: 1\n", encoding="utf-8")
+    options = RunOptions(config_path=config_path, output_dir=agent_repo / "out")
+
+    original_cwd = Path.cwd()
+    monkeypatch.chdir(other_repo)
+    try:
+        result = _minimal_run_result()
+        orchestrator._finalize_commit_and_comparison(result, options)
+    finally:
+        monkeypatch.chdir(original_cwd)
+
+    assert result.commit is not None
+    assert result.commit.sha == agent_sha
+    assert result.commit.sha != other_sha
+
+
+def test_persist_resolves_commit_from_explicit_workspace(
+    tmp_path: Path, monkeypatch
+) -> None:
+    for env_var in ("GITHUB_SHA", "BUILD_SOURCEVERSION", "Build.SourceVersion"):
+        monkeypatch.delenv(env_var, raising=False)
+
+    agent_repo = tmp_path / "my-agent"
+    agent_sha = _init_repo(agent_repo, commit_subject="agent repo commit")
+    other_repo = tmp_path / "other-project"
+    _init_repo(other_repo, commit_subject="unrelated repo commit")
+
+    output_dir = agent_repo / "out"
+    original_cwd = Path.cwd()
+    monkeypatch.chdir(other_repo)
+    try:
+        result = _minimal_run_result()
+        orchestrator._persist(result, output_dir, workspace=agent_repo)
+    finally:
+        monkeypatch.chdir(original_cwd)
+
+    assert result.commit is not None
+    assert result.commit.sha == agent_sha
 
 
 def test_remote_dataset_is_resolved_once_and_provenance_survives_cleanup(
@@ -259,3 +358,63 @@ def test_run_evaluation_preserves_dataset_semantics_across_sources(
         "overall_passed": True,
     }
     assert not list((tmp_path / ".agentops" / ".resolved").glob("*.jsonl"))
+
+
+def test_persist_skips_second_commit_resolution_when_already_attempted(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When ``_finalize_commit_and_comparison`` already tried (and, as here,
+    failed) to resolve the commit, ``_persist`` must not attempt it again -
+    each attempt runs real `git` subprocesses with their own timeout, so a
+    second identical attempt would only double the cost for the same
+    (failed) outcome."""
+    calls = {"count": 0}
+
+    def _fake_resolve_commit_info(*, workspace):
+        calls["count"] += 1
+        return None
+
+    monkeypatch.setattr(
+        orchestrator, "resolve_commit_info", _fake_resolve_commit_info
+    )
+
+    config_path = tmp_path / "agentops.yaml"
+    config_path.write_text("version: 1\n", encoding="utf-8")
+    options = RunOptions(config_path=config_path, output_dir=tmp_path / "out")
+
+    result = _minimal_run_result()
+    orchestrator._finalize_commit_and_comparison(result, options)
+    assert calls["count"] == 1
+    assert result.commit is None
+
+    orchestrator._persist(
+        result,
+        options.output_dir,
+        workspace=options.config_path.parent,
+        commit_resolution_attempted=True,
+    )
+
+    assert calls["count"] == 1
+    assert result.commit is None
+
+
+def test_persist_still_attempts_commit_resolution_when_called_standalone(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A caller that skips ``_finalize_commit_and_comparison`` (unlike every
+    current orchestrator call site) still gets the fallback, since
+    ``commit_resolution_attempted`` defaults to ``False``."""
+    calls = {"count": 0}
+
+    def _fake_resolve_commit_info(*, workspace):
+        calls["count"] += 1
+        return None
+
+    monkeypatch.setattr(
+        orchestrator, "resolve_commit_info", _fake_resolve_commit_info
+    )
+
+    result = _minimal_run_result()
+    orchestrator._persist(result, tmp_path / "out", workspace=tmp_path)
+
+    assert calls["count"] == 1

@@ -142,3 +142,79 @@ def test_http_pipeline_with_baseline(tmp_path: Path, echo_server: str) -> None:
     assert any(metric.metric == "f1_score" for metric in result.comparison.metrics)
     report_text = (current_dir / "report.md").read_text(encoding="utf-8")
     assert "Comparison vs Baseline" in report_text
+
+
+def _clear_ci_sha_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    for env_var in ("GITHUB_SHA", "BUILD_SOURCEVERSION", "Build.SourceVersion"):
+        monkeypatch.delenv(env_var, raising=False)
+
+
+def _git(args: list[str], *, cwd: Path) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def test_local_run_captures_commit_metadata_inside_git_repo(
+    tmp_path: Path, echo_server: str, monkeypatch
+) -> None:
+    """User Story 3: a local run in a git repo gets best-effort commit capture."""
+    _clear_ci_sha_env_vars(monkeypatch)
+
+    _git(["init"], cwd=tmp_path)
+    _git(["config", "user.email", "dev@example.com"], cwd=tmp_path)
+    _git(["config", "user.name", "Dev"], cwd=tmp_path)
+    dataset = tmp_path / "dataset.jsonl"
+    _write_dataset(dataset)
+    config_path = tmp_path / "agentops.yaml"
+    _write_config(config_path, agent_url=echo_server, dataset=dataset)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-m", "Add eval config"], cwd=tmp_path)
+    expected_sha = _git(["rev-parse", "HEAD"], cwd=tmp_path)
+
+    monkeypatch.chdir(tmp_path)
+    config = load_agentops_config(config_path)
+    result = run_evaluation(
+        config,
+        options=RunOptions(
+            config_path=config_path,
+            output_dir=tmp_path / "results",
+            timeout_seconds=10.0,
+        ),
+    )
+
+    assert result.commit is not None
+    assert result.commit.source == "local"
+    assert result.commit.sha == expected_sha
+
+
+def test_local_run_has_no_commit_metadata_outside_git_repo(
+    tmp_path: Path, echo_server: str, monkeypatch
+) -> None:
+    """User Story 3: outside a git repo, the run still completes normally."""
+    _clear_ci_sha_env_vars(monkeypatch)
+
+    dataset = tmp_path / "dataset.jsonl"
+    _write_dataset(dataset)
+    config_path = tmp_path / "agentops.yaml"
+    _write_config(config_path, agent_url=echo_server, dataset=dataset)
+
+    monkeypatch.chdir(tmp_path)  # tmp_path is not a git repository
+    config = load_agentops_config(config_path)
+    output_dir = tmp_path / "results"
+    result = run_evaluation(
+        config,
+        options=RunOptions(
+            config_path=config_path,
+            output_dir=output_dir,
+            timeout_seconds=10.0,
+        ),
+    )
+
+    assert result.commit is None
+    assert (output_dir / "results.json").exists()
+    assert (output_dir / "report.md").exists()
+    code = exit_code_from(result)
+    assert code in (0, 2)

@@ -15,6 +15,7 @@ Monitor; the cockpit deep-links into them.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -37,6 +38,13 @@ from agentops.core.governance import (
     REDTEAM_STATE_READY,
     summarize_redteam_readiness,
 )
+from agentops.core.results import RunResult
+from agentops.pipeline.comparison import LOWER_IS_BETTER_METRICS, metric_improved
+from agentops.pipeline.regression_insight import (
+    agent_identity_from_fields,
+    metric_threshold_criteria,
+)
+from agentops.pipeline.regression_insight import build_changed_inputs
 from agentops.utils.yaml import load_yaml
 
 
@@ -79,8 +87,17 @@ def build_cockpit_payload(
     *,
     history: Optional[List[AnalysisRecord]] = None,
     time_range: Optional[TimeRange] = None,
+    run_cache: Optional["_RunCache"] = None,
 ) -> Dict[str, Any]:
-    """Reduce local configuration and the latest Doctor run for the cockpit."""
+    """Reduce local configuration and the latest Doctor run for the cockpit.
+
+    ``run_cache`` (see ``_project_run``) is an explicit, caller-owned dict -
+    passing one lets repeated calls within the same long-lived process
+    (e.g. ``create_app``'s per-server cache) skip re-parsing and
+    re-validating unchanged ``results.json`` files; omitting it (the
+    default) does no caching at all, since a bare module-level cache would
+    be hidden global state the project's architecture explicitly forbids.
+    """
     _ = time_range  # Retained for callers; the cockpit no longer filters by date.
     records = history if history is not None else load_analysis_history(workspace)
     telemetry = _telemetry_status()
@@ -92,6 +109,9 @@ def build_cockpit_payload(
         watchdog_payload, readiness,
         initialized=(workspace / "agentops.yaml").exists(),
     )
+    eval_history = _build_eval_history_section(
+        _load_eval_runs(workspace, run_cache=run_cache)
+    )
 
     return {
         "workspace": str(workspace.resolve()),
@@ -100,6 +120,7 @@ def build_cockpit_payload(
         "connections": _build_connections(workspace),
         "readiness": readiness,
         "next_actions": next_actions,
+        "eval_history": eval_history,
     }
 
 
@@ -343,7 +364,7 @@ def _build_metrics_cards(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]
         alt_links = [r.get("alt_link") for r, _v in paired]
         alt_labels = [r.get("alt_label") for r, _v in paired]
         latest = series[-1]
-        is_latency = key == "avg_latency_seconds"
+        is_latency = key in LOWER_IS_BETTER_METRICS
         badge = _metric_trend_badge(series, is_latency=is_latency)
         cards.append({
             "key": key,
@@ -824,10 +845,47 @@ def _workflow_conclusion_badge(conclusion: str) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def _load_eval_runs(workspace: Path, *, limit: int = 24) -> List[Dict[str, Any]]:
+def _build_eval_history_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Builds the payload for Cockpit's version-history view (User Story 2).
+
+    Lists every locally recorded evaluation run, newest first, with its
+    commit (when known) and what changed relative to the previous entry in
+    its version lineage - independent of whether that run regressed, so an
+    operator can browse the causal trail across prompt/model/config changes
+    over time.
+    """
+    if not eval_runs:
+        return {"has_runs": False, "entries": []}
+
+    entries: List[Dict[str, Any]] = []
+    for run in reversed(eval_runs):  # newest first for display
+        commit = run.get("commit")
+        entries.append(
+            {
+                "run_id": run["run_id"],
+                "timestamp": run.get("timestamp"),
+                "target": run.get("target"),
+                "metrics": run.get("metrics") or {},
+                "commit_short_sha": commit.get("short_sha") if commit else None,
+                "commit_subject": commit.get("subject") if commit else None,
+                "changed_inputs": run.get("changed_inputs") or [],
+                "regressed": bool(run.get("regressed")),
+                "regressed_metrics": run.get("regressed_metrics") or [],
+                "report_link": run.get("report_link"),
+                "cloud_report_url": run.get("cloud_report_url"),
+                "previous_cloud_report_url": run.get("previous_cloud_report_url"),
+            }
+        )
+    return {"has_runs": True, "entries": entries}
+
+
+def _load_eval_runs(
+    workspace: Path, *, limit: int = 24, run_cache: Optional["_RunCache"] = None
+) -> List[Dict[str, Any]]:
     """Scan ``.agentops/results/<timestamp>/results.json`` and project the
     fields the cockpit cares about. ``latest/`` is skipped because it is
-    a mirror of the most recent timestamped run.
+    a mirror of the most recent timestamped run. See ``_project_run`` for
+    ``run_cache``.
     """
     results_root = workspace / ".agentops" / "results"
     if not results_root.exists():
@@ -847,13 +905,168 @@ def _load_eval_runs(workspace: Path, *, limit: int = 24) -> List[Dict[str, Any]]
 
     runs: List[Dict[str, Any]] = []
     for run_id, path in candidates:
-        run = _project_run(path, run_id=run_id)
+        run = _project_run(path, run_id=run_id, run_cache=run_cache)
         if run is not None:
             runs.append(run)
+
+    _attach_version_history(runs)
     return runs
 
 
-def _project_run(path: Path, *, run_id: str) -> Optional[Dict[str, Any]]:
+def _version_lineage_key(data: Dict[str, Any]) -> Optional[str]:
+    """Groups runs into a version-history lineage: same agent identity,
+    dataset, and evaluator set - deliberately ignoring the agent's
+    version/deployment, since detecting *those* changing between
+    consecutive runs is the entire point of this view (see
+    ``pipeline.regression_insight.build_changed_inputs``).
+
+    This is intentionally coarser than
+    ``results_history._methodology_fingerprint`` (which Doctor's rolling
+    regression check uses and which hashes the *whole* target, version
+    included, so it excludes version-bumped runs from its automatic
+    baseline by design) - the version-history view exists specifically to
+    show what changed *across* those version bumps.
+    """
+    raw_target = data.get("target")
+    target: Dict[str, Any] = raw_target if isinstance(raw_target, dict) else {}
+    # See `regression_insight.agent_identity_from_fields`'s docstring -
+    # the single source of truth for this, shared with Doctor
+    # (results_history._lineage_key) and build_regression_insight's own
+    # comparability check, so the three can't drift apart again.
+    agent_identity = agent_identity_from_fields(
+        name=target.get("name"),
+        url=target.get("url"),
+        kind=target.get("kind"),
+        raw=target.get("raw"),
+    )
+    dataset_path = data.get("dataset_path")
+    evaluators_raw = data.get("evaluators")
+    evaluators = (
+        sorted(str(e) for e in evaluators_raw) if isinstance(evaluators_raw, list) else []
+    )
+    if not agent_identity and not dataset_path and not evaluators:
+        return None
+    payload = json.dumps(
+        {
+            "agent_identity": str(agent_identity) if agent_identity else None,
+            "dataset": str(dataset_path) if dataset_path else None,
+            "evaluators": evaluators,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _attach_version_history(runs: List[Dict[str, Any]]) -> None:
+    """Fill in ``changed_inputs``/``regressed``/``previous_cloud_report_url``
+    for each run, in place.
+
+    Compares each run against the previous entry (in the already
+    oldest-to-newest ordered ``runs`` list) that shares the same
+    ``version_lineage_key`` (see ``_version_lineage_key`` above) - *not*
+    the same thing as Doctor's rolling regression check's
+    ``methodology_fingerprint`` grouping (``results_history``): that one is
+    deliberately finer (version/deployment included), so it treats a
+    version bump as a new methodology and excludes it from the rolling
+    baseline, whereas this view groups *across* version bumps on purpose,
+    since showing what changed across them is the point. A run with no key
+    or no prior comparable run gets an empty ``changed_inputs`` list, not a
+    fabricated one. The private ``_full_result`` helper key (a parsed
+    ``RunResult``, not JSON-safe) is removed before returning.
+    """
+    last_by_lineage_key: Dict[str, RunResult] = {}
+    last_cloud_report_url_by_lineage_key: Dict[str, Optional[str]] = {}
+    for run in runs:
+        lineage_key = run.get("version_lineage_key")
+        current_full = cast(Optional[RunResult], run.pop("_full_result", None))
+        run["changed_inputs"] = []
+        run["regressed"] = False
+        run["regressed_metrics"] = []
+        # The previous comparable run's own Foundry Evaluations link (its
+        # `cloud_report_url`, never the local-report fallback - omitted
+        # the same way `RegressionInsight.from_report_url` is when that
+        # run was never published), so a regressed row can link out to
+        # both sides of the comparison, not just its own.
+        run["previous_cloud_report_url"] = None
+
+        if lineage_key is not None:
+            previous_full = last_by_lineage_key.get(lineage_key)
+            if previous_full is not None and current_full is not None:
+                changes = build_changed_inputs(previous_full, current_full)
+                run["changed_inputs"] = [c.model_dump(mode="json") for c in changes]
+                shared_metrics = set(previous_full.aggregate_metrics) & set(
+                    current_full.aggregate_metrics
+                )
+                # Named, not just a boolean, so a run that regressed on
+                # several metrics at once doesn't read the same as one that
+                # regressed on a single metric.
+                run["regressed_metrics"] = sorted(
+                    m
+                    for m in shared_metrics
+                    if metric_improved(
+                        m,
+                        current_full.aggregate_metrics[m],
+                        previous_full.aggregate_metrics[m],
+                        criteria=metric_threshold_criteria(m, current_full, previous_full),
+                    )
+                    is False
+                )
+                run["regressed"] = bool(run["regressed_metrics"])
+                run["previous_cloud_report_url"] = last_cloud_report_url_by_lineage_key.get(
+                    lineage_key
+                )
+            if current_full is not None:
+                last_by_lineage_key[lineage_key] = current_full
+                last_cloud_report_url_by_lineage_key[lineage_key] = run.get(
+                    "cloud_report_url"
+                )
+
+
+# Keyed by results.json path, holding (mtime, projected dict). Deliberately
+# *not* a module-level variable (the architecture constitution and AGENTS.md
+# both prohibit new hidden global state) - callers that want the caching
+# benefit own and pass in their own dict (``create_app`` keeps one per
+# running Cockpit server instance, scoped to its own closure); a caller
+# that passes ``None`` (the default) just gets no caching, not an error.
+_RunCache = Dict[Path, Tuple[float, Optional[Dict[str, Any]]]]
+
+
+def _project_run(
+    path: Path, *, run_id: str, run_cache: Optional[_RunCache] = None
+) -> Optional[Dict[str, Any]]:
+    """Project one ``results.json`` into the fields the cockpit cares about.
+
+    ``run_cache`` avoids re-reading, re-parsing, and re-validating the same
+    completed run (a ``RunResult.model_validate`` over every row/metric,
+    not cheap) on every cockpit render. Safe to reuse across renders
+    because a run's ``results.json`` is written once and never mutated
+    afterwards; ``mtime`` is still checked so a changed file (e.g. a
+    replayed/overwritten run during development) isn't served stale. Each
+    lookup returns a shallow copy so ``_attach_version_history``'s
+    in-place ``run[...] = ...`` / ``run.pop(...)`` on the result never
+    corrupts the cached entry.
+    """
+    if run_cache is None:
+        return _project_run_uncached(path, run_id=run_id)
+
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = None
+
+    if mtime is not None:
+        cached = run_cache.get(path)
+        if cached is not None and cached[0] == mtime:
+            cached_projection = cached[1]
+            return dict(cached_projection) if cached_projection is not None else None
+
+    projection = _project_run_uncached(path, run_id=run_id)
+    if mtime is not None:
+        run_cache[path] = (mtime, dict(projection) if projection is not None else None)
+    return projection
+
+
+def _project_run_uncached(path: Path, *, run_id: str) -> Optional[Dict[str, Any]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -889,6 +1102,13 @@ def _project_run(path: Path, *, run_id: str) -> Optional[Dict[str, Any]]:
     alt_link = local_report_url if cloud_report_url else None
     alt_label = "Local report" if cloud_report_url else None
 
+    commit = data.get("commit")
+    full_result: Optional[RunResult] = None
+    try:
+        full_result = RunResult.model_validate(data)
+    except ValueError:
+        full_result = None
+
     return {
         "run_id": run_id,
         "timestamp": data.get("started_at") or data.get("finished_at"),
@@ -904,6 +1124,10 @@ def _project_run(path: Path, *, run_id: str) -> Optional[Dict[str, Any]]:
         "report_link": report_link,
         "alt_link": alt_link,
         "alt_label": alt_label,
+        "commit": commit if isinstance(commit, dict) else None,
+        "version_lineage_key": _version_lineage_key(data),
+        # Internal only - consumed and removed by `_attach_version_history`.
+        "_full_result": full_result,
     }
 
 
@@ -4178,6 +4402,103 @@ def _render_readiness_section(readiness: Dict[str, Any]) -> str:
     )
 
 
+def _render_eval_history_section(eval_history: Dict[str, Any]) -> str:
+    """Renders Cockpit's version-history view (User Story 2).
+
+    One row per evaluated run, newest first, showing its commit (when
+    known) and what changed relative to the previous run in its lineage -
+    shown regardless of whether that run regressed.
+    """
+    entries = eval_history.get("entries") or []
+    if not entries:
+        return (
+            '<div class="empty-state">'
+            "No evaluation runs recorded yet. Run "
+            "<code>agentops eval run</code> to populate this section."
+            "</div>"
+        )
+
+    rows: List[str] = []
+    for entry in entries:
+        timestamp = _html_escape(str(entry.get("timestamp") or "unknown"))
+
+        commit_sha = entry.get("commit_short_sha")
+        commit_subject = entry.get("commit_subject") or ""
+        if commit_sha:
+            commit_html = (
+                f'<code title="{_html_escape(commit_subject)}">{_html_escape(commit_sha)}</code>'
+            )
+        else:
+            commit_html = '<span class="muted">unknown commit</span>'
+
+        metrics = entry.get("metrics") or {}
+        # `_project_run_uncached` keeps projecting a run even when full
+        # `RunResult` validation fails, so a malformed/historical
+        # `results.json` can carry a non-numeric metric value here -
+        # formatting it with `:.3f` directly would raise and take down
+        # the whole Cockpit page for every entry, not just this one.
+        metric_parts: List[str] = []
+        for name, value in sorted(metrics.items()):
+            numeric_value = _safe_float(value)
+            if numeric_value is not None:
+                metric_parts.append(f"{_html_escape(str(name))}={numeric_value:.3f}")
+        metrics_html = ", ".join(metric_parts) or "&mdash;"
+
+        changes = entry.get("changed_inputs") or []
+        if changes:
+            changes_html = "; ".join(
+                _html_escape(str(c.get("description") or c.get("field")))
+                for c in changes
+            )
+        else:
+            changes_html = '<span class="muted">no tracked changes</span>'
+
+        regressed_metrics = entry.get("regressed_metrics") or []
+        regressed_badge = (
+            '<span class="pillar-chip chip-crit">regressed: '
+            f'{_html_escape(", ".join(regressed_metrics))}</span>'
+            if regressed_metrics
+            else ""
+        )
+        # Links to both sides of the comparison in Foundry, when each was
+        # published there - same data as RegressionInsight.from_report_url/
+        # to_report_url, omitted silently when a side was never published
+        # (e.g. local execution with no `publish: true`). Only shown
+        # alongside the regressed badge; every row already links to its
+        # own report via run_label regardless of whether it regressed.
+        foundry_links: List[str] = []
+        if regressed_metrics:
+            previous_cloud_url = entry.get("previous_cloud_report_url")
+            current_cloud_url = entry.get("cloud_report_url")
+            if previous_cloud_url:
+                foundry_links.append(
+                    f'<a href="{_html_escape(str(previous_cloud_url))}">baseline in Foundry</a>'
+                )
+            if current_cloud_url:
+                foundry_links.append(
+                    f'<a href="{_html_escape(str(current_cloud_url))}">this run in Foundry</a>'
+                )
+        foundry_links_html = (
+            f' <span class="history-foundry-links">{" &middot; ".join(foundry_links)}</span>'
+            if foundry_links
+            else ""
+        )
+        report_link = entry.get("report_link")
+        run_label = _html_escape(str(entry.get("target") or entry.get("run_id")))
+        if report_link:
+            run_label = f'<a href="{_html_escape(str(report_link))}">{run_label}</a>'
+
+        rows.append(
+            '<div class="history-row">'
+            f'<div class="history-run">{run_label} {regressed_badge}{foundry_links_html}</div>'
+            f'<div class="history-meta">{timestamp} &middot; {commit_html}</div>'
+            f'<div class="history-metrics">{metrics_html}</div>'
+            f'<div class="history-changes">{changes_html}</div>'
+            "</div>"
+        )
+    return '<div class="history-list">' + "".join(rows) + "</div>"
+
+
 def _render_next_actions_section(next_actions: Dict[str, Any]) -> str:
     rows: List[str] = []
     for action in next_actions.get("actions", []):
@@ -4413,6 +4734,12 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         payload.get("readiness") or {"checks": [], "label": "0/0 ready"},
         payload.get("watchdog") or {},
     )
+    eval_history_section = _collapsible_section(
+        "Evaluation Version History",
+        _render_eval_history_section(payload.get("eval_history") or {"entries": []}),
+        section_id="section-eval-history",
+        open_by_default=False,
+    )
 
     return _COCKPIT_TEMPLATE.format(
         theme_variables=_THEME_VARIABLES,
@@ -4420,6 +4747,7 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         connections_section=connections_section,
         readiness_section=readiness_section,
         watchdog_section=watchdog_section,
+        eval_history_section=eval_history_section,
         next_actions_section=next_actions_section,
         workspace_display=workspace_display,
         workspace=payload["workspace"],
@@ -4891,6 +5219,29 @@ _COCKPIT_TEMPLATE = """<!doctype html>
   .next-cta:hover {{ background: rgba(56, 189, 248, 0.18); }}
   code.next-cta {{ background: rgba(255, 255, 255, 0.05); color: var(--text); }}
   .muted {{ color: var(--text-dim); }}
+  /* Evaluation version history */
+  .history-list {{
+    display: flex; flex-direction: column; gap: 8px;
+  }}
+  .history-row {{
+    padding: 12px 14px; border: 1px solid var(--border);
+    border-radius: 10px; background: rgba(255, 255, 255, 0.015);
+  }}
+  .history-run {{ font-size: 13px; font-weight: 600; color: var(--text); }}
+  .history-run a {{ color: inherit; }}
+  .history-foundry-links {{
+    font-size: 11px; font-weight: 400; color: var(--text-dim);
+  }}
+  .history-foundry-links a {{ color: var(--accent); }}
+  .history-meta {{
+    font-size: 12px; color: var(--text-dim); margin-top: 2px;
+  }}
+  .history-metrics {{
+    font-size: 12px; color: var(--text); margin-top: 6px;
+  }}
+  .history-changes {{
+    font-size: 12px; color: var(--text-dim); margin-top: 4px;
+  }}
   @keyframes live-pulse {{
     0%, 100% {{ opacity: 1; }}
     50% {{ opacity: 0.6; }}
@@ -5290,6 +5641,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
 {connections_section}
 {readiness_section}
 {watchdog_section}
+{eval_history_section}
 {next_actions_section}
 
 <footer><code>agentops cockpit</code></footer>
@@ -5400,12 +5752,16 @@ def create_app(workspace: Path):
         redoc_url=None,
         openapi_url=None,
     )
+    # Explicit, app-instance-scoped (not module-level/global) cache for
+    # `_project_run` - lives exactly as long as this server process. See
+    # `_project_run`'s docstring.
+    run_cache: _RunCache = {}
 
     @app.get("/", response_class=HTMLResponse)
     def _index(partial: Optional[str] = Query(None, alias="_partial")):
         if not partial:
             return HTMLResponse(_render_loading_shell())
-        payload = build_cockpit_payload(workspace)
+        payload = build_cockpit_payload(workspace, run_cache=run_cache)
         return HTMLResponse(render_cockpit_html(payload))
 
     @app.get("/favicon.ico")
@@ -5425,7 +5781,7 @@ def create_app(workspace: Path):
 
     @app.get("/api/eval-runs")
     def _api_eval_runs(limit: int = 24):
-        return JSONResponse(_load_eval_runs(workspace, limit=limit))
+        return JSONResponse(_load_eval_runs(workspace, limit=limit, run_cache=run_cache))
 
     @app.get("/api/runs/{run_id}/report", response_class=HTMLResponse)
     def _api_run_report(run_id: str):

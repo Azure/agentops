@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agentops.agent.config import FoundryControlSourceConfig, ResultsHistorySourceConfig
-from agentops.agent.sources.results_history import collect_results_history
+from agentops.agent.sources.results_history import _lineage_key, collect_results_history
 
 
 def _write_run(
@@ -35,6 +35,33 @@ def _write_run(
         },
     }
     (run_dir / "results.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_lineage_key_ignores_deployment_for_direct_model_targets() -> None:
+    """A `model:<deployment>` target has no `name`/`url` - only `raw`
+    (which embeds the deployment itself, e.g. `"model:gpt-4o"`) and
+    `deployment`. Falling back to `raw` for the lineage identity would
+    make a deployment change look like a different agent entirely,
+    defeating the point of a version/deployment-blind key - needed so
+    `agent.checks.regression` can pick the true immediately-preceding run
+    across a model-deployment change, same as a Foundry prompt version
+    bump."""
+    gpt4o = {
+        "target": {"kind": "model_direct", "raw": "model:gpt-4o", "deployment": "gpt-4o"},
+        "dataset_path": "data/smoke.jsonl",
+        "evaluators": ["CoherenceEvaluator"],
+    }
+    gpt4o_mini = {
+        "target": {
+            "kind": "model_direct",
+            "raw": "model:gpt-4o-mini",
+            "deployment": "gpt-4o-mini",
+        },
+        "dataset_path": "data/smoke.jsonl",
+        "evaluators": ["CoherenceEvaluator"],
+    }
+
+    assert _lineage_key(gpt4o) == _lineage_key(gpt4o_mini)
 
 
 def test_collect_results_history_orders_oldest_to_newest(tmp_path: Path) -> None:

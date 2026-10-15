@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from agentops.agent.config import FoundryControlSourceConfig, ResultsHistorySourceConfig
+from agentops.pipeline.regression_insight import agent_identity_from_fields
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +37,23 @@ class RunSummary:
     source: str = "local"
     portal_url: Optional[str] = None
     methodology_fingerprint: Optional[str] = None
+    # Coarser than `methodology_fingerprint` - same agent identity, dataset,
+    # and evaluator set, but version/deployment excluded. Used for
+    # Cockpit-style display grouping (same grouping concept as
+    # `cockpit._version_lineage_key`) - *not* for picking `previous_run` in
+    # `agent.checks.regression` (see `agent_identity_key` below for that).
+    lineage_key: Optional[str] = None
+    # Narrower still than `lineage_key`: agent identity alone, dataset and
+    # evaluators excluded. `agent.checks.regression` needs this - not
+    # `lineage_key` - to pick "the immediately preceding run with the same
+    # agent" for causal attribution, consistent with
+    # `regression_insight.same_lineage`'s own, equally agent-identity-only
+    # rule: a dataset/evaluator-set change is itself one of the things this
+    # feature must be able to attribute a regression to, so filtering the
+    # candidate pool by them first would make picking the *actual*
+    # immediately-preceding run (and thus detecting that very change)
+    # impossible whenever an intervening run used a different dataset.
+    agent_identity_key: Optional[str] = None
 
 
 @dataclass
@@ -139,7 +157,68 @@ def _summarize(path: Path) -> Optional[RunSummary]:
         raw_path=path,
         item_evaluations=item_evaluations,
         methodology_fingerprint=_methodology_fingerprint(data),
+        lineage_key=_lineage_key(data),
+        agent_identity_key=_agent_identity_key(data),
     )
+
+
+def _agent_identity_key(data: Dict[str, Any]) -> Optional[str]:
+    """The run's agent identity alone (see
+    ``regression_insight.agent_identity_from_fields`` - the single source
+    of truth for this, shared with Cockpit (``cockpit._version_lineage_key``)
+    and ``build_regression_insight``'s own comparability check), with no
+    dataset/evaluator information folded in. Feeds ``RunSummary
+    .agent_identity_key`` - see that field's docstring for why
+    ``agent.checks.regression`` needs exactly this, narrower than
+    ``_lineage_key`` below, to pick the comparison partner for causal
+    attribution.
+    """
+    raw_target = data.get("target")
+    target: Dict[str, Any] = raw_target if isinstance(raw_target, dict) else {}
+    identity = agent_identity_from_fields(
+        name=target.get("name"),
+        url=target.get("url"),
+        kind=target.get("kind"),
+        raw=target.get("raw"),
+    ) or (data.get("config") or {}).get("agent")
+    return str(identity) if identity else None
+
+
+def _lineage_key(data: Dict[str, Any]) -> Optional[str]:
+    """Derive a stable hash of (agent identity, dataset, evaluators) -
+    deliberately excluding the agent's version/deployment, unlike
+    ``_methodology_fingerprint`` below. This is the *display* grouping key
+    (same concept as ``cockpit._version_lineage_key``) - for picking the
+    comparison partner for causal regression attribution,
+    ``agent.checks.regression`` uses the narrower ``_agent_identity_key``
+    above instead (see its docstring and ``RunSummary.agent_identity_key``
+    for why: a dataset/evaluator change must itself remain attributable,
+    which filtering the candidate pool by them first would prevent).
+    """
+    agent_identity = _agent_identity_key(data)
+    dataset_path = data.get("dataset_path") or (data.get("config") or {}).get(
+        "dataset"
+    )
+    evaluators_raw = data.get("evaluators")
+    if isinstance(evaluators_raw, list):
+        evaluators = sorted(str(e) for e in evaluators_raw)
+    elif isinstance(evaluators_raw, dict):
+        evaluators = sorted(str(k) for k in evaluators_raw.keys())
+    else:
+        evaluators = []
+
+    if not agent_identity and not dataset_path and not evaluators:
+        return None
+
+    payload = json.dumps(
+        {
+            "agent_identity": str(agent_identity) if agent_identity else None,
+            "dataset": str(dataset_path) if dataset_path else None,
+            "evaluators": evaluators,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _methodology_fingerprint(data: Dict[str, Any]) -> Optional[str]:
