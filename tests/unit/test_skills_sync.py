@@ -8,6 +8,7 @@ If this test fails, run:
     scripts/sync-skills.ps1  (Windows)
 """
 
+import json
 from pathlib import Path
 
 # Repository root is four levels up from this test file (tests/unit/test_skills_sync.py).
@@ -41,6 +42,20 @@ def test_all_skills_present_in_plugin() -> None:
             f"Skill '{skill_name}/SKILL.md' exists in src/ but not in plugins/.\n"
             "Run scripts/sync-skills.sh (or .ps1) to fix."
         )
+
+
+def test_vsix_manifest_registers_all_bundled_skills() -> None:
+    package = json.loads(
+        (_PLUGIN_SKILLS.parent / "package.json").read_text(encoding="utf-8")
+    )
+    declared_paths = [skill["path"] for skill in package["contributes"]["chatSkills"]]
+    expected_paths = {f"./skills/{name}/SKILL.md" for name in _skill_dirs()}
+
+    assert expected_paths, "No canonical skills found"
+    assert len(declared_paths) == len(set(declared_paths)), "Duplicate skill registrations"
+    assert set(declared_paths) == expected_paths
+    for path in declared_paths:
+        assert (_PLUGIN_SKILLS.parent / path).is_file(), f"Registered skill missing: {path}"
 
 
 def test_skill_contents_match() -> None:

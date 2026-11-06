@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-06
+
 ### Changed
 - **Refresh locked Python dependencies.** Update `aiohttp`, `certifi`,
   `filelock`, `mcp`, `multidict`, `nltk`, `oauthlib`, and the OpenTelemetry
@@ -15,6 +17,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   and `actions/download-artifact` to 8.0.2. Preserve full commit SHA pins,
   Trusted Publishing, and the stable Marketplace approval gate.
 - **Refresh documentation tooling.** Update `mkdocs-material` to 9.8.0.
+
+### Fixed
+- **Register every bundled VS Code skill.** Align the extension's `chatSkills`
+  manifest with the seven canonical skills already packaged, registering
+  `agentops-agent` and `agentops-governance` and removing references to three
+  absent legacy skills. Add a contract check to prevent manifest drift.
 
 ### Removed
 - **Automatic issue type classification.** Remove the repository's optional
