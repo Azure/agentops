@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -25,7 +26,6 @@ from agentops.services.workflow_analysis import (
     recommended_deploy_mode,
     recommended_eval_runner,
 )
-
 
 _TEMPLATE_PACKAGE = "agentops.templates"
 _CLOUD_EVAL_CONFIG_NAME = ".agentops.cloud.yaml"
@@ -110,7 +110,7 @@ _TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
     "azure-devops": {
         "pr": (
             "pipelines/azuredevops/agentops-pr.yml",
-            ".azuredevops/pipelines/agentops-pr.yml",
+            ".azuredevops/templates/agentops-pr-trusted.yml",
         ),
         "dev": (
             "pipelines/azuredevops/agentops-deploy-dev.yml",
@@ -184,6 +184,8 @@ def _write_template(
     template_content = template_resource.read_text(encoding="utf-8")
     for key, value in (substitutions or {}).items():
         template_content = template_content.replace(key, value)
+    if "__PR_INPUT_TASKS__" in (substitutions or {}):
+        template_content = _restrict_ado_pr_logging(template_content)
 
     existed_before = output_path.exists()
 
@@ -283,7 +285,7 @@ _PROMPT_AGENT_TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
     "azure-devops": {
         "pr": (
             "pipelines/azuredevops/agentops-pr-prompt-agent.yml",
-            ".azuredevops/pipelines/agentops-pr.yml",
+            ".azuredevops/templates/agentops-pr-trusted.yml",
         ),
         "dev": (
             "pipelines/azuredevops/agentops-deploy-prompt-agent.yml",
@@ -369,12 +371,134 @@ def _eval_substitutions(
     return _github_eval_substitutions(eval_runner, config_path, kind=kind)
 
 
+def _pr_substitutions(platform: str, *, prompt_agent: bool) -> Mapping[str, str]:
+    prompt = str(prompt_agent).lower()
+    if platform == "azure-devops":
+        preparation = f"""          - bash: python -I -m agentops.services.pr_gate
+            displayName: Prepare trusted data-only PR inputs
+            env:
+              AGENTOPS_PR_SHA: $(Build.SourceVersion)
+              AGENTOPS_PR_SOURCE_REF: $(Build.SourceBranch)
+              AGENTOPS_PR_GIT_URL: $(AGENTOPS_ADO_REPOSITORY_URL)
+              AGENTOPS_PR_GIT_TOKEN: $(System.AccessToken)
+              AGENTOPS_PR_PROMPT_CANDIDATE: "{prompt}"
+              AGENTOPS_AGENT_PROMPT_FILE: $(AGENTOPS_AGENT_PROMPT_FILE)
+              AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
+              AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)"""
+        status = """          - task: AzureCLI@2
+            displayName: Publish required AgentOps PR status
+            condition: always()
+            inputs:
+              azureSubscription: agentops-pr-azure
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: python -I -m agentops.services.pr_gate status
+            env:
+              AGENTOPS_ADO_COLLECTION_URI: $(AGENTOPS_ADO_COLLECTION_URI)
+              AGENTOPS_ADO_PROJECT_ID: $(AGENTOPS_ADO_PROJECT_ID)
+              AGENTOPS_ADO_REPOSITORY_ID: $(AGENTOPS_ADO_REPOSITORY_ID)"""
+        return {
+            "__PR_INPUT_TASKS__": preparation,
+            "__PR_STATUS_TASK__": status,
+            "__PR_STAGE_FAILURE_STATUS__": status.replace(
+                "condition: always()", "condition: failed()"
+            ),
+            "__PR_VARIABLE_GUARD__": """  - ${{ each variable in variables }}:
+    - ${{ if not(or(startsWith(lower(variable.key), 'build.'), startsWith(lower(variable.key), 'system.'), startsWith(lower(variable.key), 'agent.'), startsWith(lower(variable.key), 'pipeline.'), startsWith(lower(variable.key), 'resources.'), startsWith(lower(variable.key), 'release.'))) }}:
+        '${{ variable.key }}': error
+""",
+        }
+    preparation = f"""      - name: Prepare trusted data-only PR inputs
+        id: pr_input
+        env:
+          AGENTOPS_PR_SHA: ${{{{ github.event.pull_request.head.sha }}}}
+          AGENTOPS_PR_NUMBER: ${{{{ github.event.pull_request.number }}}}
+          AGENTOPS_PR_GIT_TOKEN: ${{{{ github.token }}}}
+          AGENTOPS_PR_PROMPT_CANDIDATE: "{prompt}"
+          AGENTOPS_AGENT_PROMPT_FILE: ${{{{ vars.AGENTOPS_AGENT_PROMPT_FILE || '' }}}}
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{{{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}}}
+          AZURE_OPENAI_ENDPOINT: ${{{{ vars.AZURE_OPENAI_ENDPOINT }}}}
+        run: python -I -m agentops.services.pr_gate"""
+    status = """      - name: Create exclusive PR status token
+        id: status_token
+        if: always() && github.event_name == 'pull_request_target' && vars.AGENTOPS_STATUS_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ vars.AGENTOPS_STATUS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AGENTOPS_STATUS_APP_PRIVATE_KEY }}
+          permission-statuses: write
+
+      - name: Publish required AgentOps PR status
+        if: always() && github.event_name == 'pull_request_target'
+        uses: actions/github-script@v8
+        env:
+          AGENTOPS_JOB_STATUS: ${{ job.status }}
+        with:
+          # Without an exclusive App this is informational. Do not require
+          # a shared Actions status as proof of the trusted evaluator.
+          github-token: ${{ steps.status_token.outputs.token || github.token }}
+          script: |
+            await github.rest.repos.createCommitStatus({
+              ...context.repo,
+              sha: context.payload.pull_request.head.sha,
+              context: 'agentops/pr-eval',
+              state: process.env.AGENTOPS_JOB_STATUS === 'success' ? 'success' : 'failure',
+              description: 'AgentOps trusted PR evaluation',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+"""
+    return {
+        "__PR_INPUT_STEPS__": preparation,
+        "__PR_STATUS_STEP__": status,
+        "__PR_STAGE_FAILURE_STATUS__": status.replace(
+            "always() &&", "failure() &&"
+        ),
+    }
+
+
+def _github_config_env(config_path: str) -> str:
+    if config_path == "$AGENTOPS_PR_CONFIG":
+        return "${{ env.AGENTOPS_PR_CONFIG }}"
+    return config_path
+
+
+def _restrict_ado_pr_logging(content: str) -> str:
+    """Prevent candidate responses from changing subsequent task environments."""
+    def replace(match: re.Match[str]) -> str:
+        indent, step = match.group(1), match.group(2)
+        end = re.search(rf"(?m)^{re.escape(indent)}- ", content[match.end():])
+        body = content[match.start():match.end() + end.start()] if end else content[match.start():]
+        variables: tuple[str, ...]
+        if "Prepare trusted data-only PR inputs" in body:
+            variables = ("AGENTOPS_PR_PREPARED", "AGENTOPS_PR_SHA", "AGENTOPS_PR_NUMBER")
+        elif re.search(r"(?m)^[ \t]*displayName: Prepare AgentOps cloud eval config$", body):
+            variables = ("AGENTOPS_CI_CONFIG",)
+        elif "task.setvariable variable=AGENTOPS_EVAL_EXIT_CODE" in body:
+            variables = ("AGENTOPS_EVAL_EXIT_CODE",)
+        elif "officialPreflight" in body:
+            variables = ("official*",)
+        else:
+            variables = ()
+        return (
+            f"{indent}- target:\n{indent}    commands: restricted\n"
+            f"{indent}    settableVariables:{'' if variables else ' []'}\n"
+            + "".join(f"{indent}    - {name}\n" for name in variables)
+            + f"{indent}  {step}"
+        )
+
+    content = content.replace(
+        "azureSubscription: $(AZURE_SERVICE_CONNECTION)",
+        "azureSubscription: agentops-pr-azure",
+    )
+    return re.sub(r"(?m)^([ \t]*)- (bash:|task: AzureCLI@2)", replace, content)
+
+
 def _github_governance_steps(config_path: str) -> str:
     return f"""
       - name: Detect AgentOps governance gates
         id: governance
         env:
-          AGENTOPS_CONFIG: "{config_path}"
+          AGENTOPS_CONFIG: "{_github_config_env(config_path)}"
         run: |
           python - <<'PY'
           import os
@@ -487,7 +611,7 @@ def _github_eval_substitutions(
         return {
             "__EVAL_STEPS__": f"""      - name: Prepare AgentOps cloud eval config
         env:
-          AGENTOPS_SOURCE_CONFIG: "{config_path}"
+          AGENTOPS_SOURCE_CONFIG: "{_github_config_env(config_path)}"
         run: |
           python - <<'PY'
           import os
@@ -919,7 +1043,7 @@ def generate_cicd_workflows(
             "__AGENTOPS_INSTALL_SPEC__": _agentops_install_spec(),
         }
         eval_config = (
-            "${{ inputs.config || 'agentops.yaml' }}"
+            "$AGENTOPS_PR_CONFIG"
             if platform == "github" and kind == "pr"
             else "$(AGENTOPS_CONFIG)"
             if platform == "azure-devops"
@@ -937,6 +1061,19 @@ def generate_cicd_workflows(
             substitutions.update(prompt_values)
         else:
             template_path, output_rel = template_map[kind]
+        if kind == "pr":
+            substitutions.update(
+                _pr_substitutions(
+                    platform, prompt_agent=effective_deploy_mode == "prompt-agent"
+                )
+            )
+            if platform == "azure-devops":
+                _write_template(
+                    templates_root,
+                    "pipelines/azuredevops/agentops-pr-entry.yml",
+                    directory / ".azuredevops/pipelines/agentops-pr.yml",
+                    force, result,
+                )
         ado_indent = (
             10
             if kind == "pr"

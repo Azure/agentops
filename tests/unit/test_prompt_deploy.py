@@ -71,7 +71,11 @@ def test_stage_prompt_agent_candidate_creates_version_and_candidate_config(
         encoding="utf-8"
     )
     assert "agent: support-agent:4" in candidate_config
-    assert str(dataset) in candidate_config
+    data = prompt_deploy.load_yaml(
+        tmp_path / ".agentops/deployments/agentops.candidate.yaml"
+    )
+    assert not Path(data["dataset"]).is_absolute()
+    assert (tmp_path / ".agentops/deployments" / data["dataset"]).resolve() == dataset
 
 
 def test_candidate_eval_config_preserves_remote_dataset_uri(tmp_path: Path) -> None:

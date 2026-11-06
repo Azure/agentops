@@ -127,6 +127,131 @@ GitHub or Azure, and call out anything that needs owner/admin permission.
 
 ## Configuration walkthrough
 
+### PR gate trust boundary and migration
+
+Regenerate existing copied PR workflows after installing a release containing
+the #499 fix. Updating the package alone does not update copied YAML files.
+The authenticated evaluator must execute only administrator-reviewed workflow,
+toolkit, configuration, recipes and scripts. PR content is read as immutable
+Git blobs, never checked out, installed or imported in the credentialed job.
+Only JSONL rows at the configured dataset path and plain instructions at the
+configured prompt path are copied into that trusted checkout.
+
+Changes to `agentops.yaml`, including destinations, authentication, thresholds,
+recipes and prompt paths, fail the PR gate before evaluation. Review and land
+such configuration through a separate controlled change, then rerun candidate
+evaluation. Unrelated code changes do not run with evaluation credentials.
+Code tests remain a separate, unprivileged workflow. Remote Foundry datasets
+continue to come from trusted configuration. Local CLI configuration precedence,
+the flat schema and exit codes are unchanged.
+
+HTTPS is required for credential-bearing PR destinations. Automatic Foundry
+classification uses the hostname, not Azure-looking text in a path or query.
+Private/custom hosts can use explicit `responses` or `invocations` protocols,
+and supported sovereign Azure hostnames remain recognized. Credentialed HTTP
+redirects may remain within the same origin, never across hosts, ports or an
+HTTPS downgrade. Git input fetching does not follow redirects when using its
+read token.
+
+#### GitHub Actions
+
+PR templates use `pull_request_target`, check out the exact trusted base SHA
+and fetch candidate blobs without persisted checkout credentials. Do not add
+candidate checkout, package installation, imports, actions, recipes or shell
+execution to this workflow. The changed trigger deliberately permits evaluating
+fork PR data with the same sandbox configuration. An optional environment
+approval can remain in place, but a maintainer must not approve an environment
+for arbitrary PR-authored code.
+
+Restrict the sandbox Azure identity and any status-writer key to the protected
+workflow/ref. An environment name or default OIDC environment subject alone
+does not identify a workflow. Protect allowed deployment branches and use a
+workflow-bound custom OIDC subject where supported, or require an administrator
+to review the exact workflow/revision before granting environment access.
+Do not make the same credentials available to ordinary PR jobs or arbitrary
+branch `workflow_dispatch` runs.
+
+The status is posted on the actual PR head SHA. **That SHA and the status name
+alone are not trustworthy merge evidence.** Other writers and PR-authored
+workflows can publish a status using the shared GitHub Actions identity.
+For a required `agentops/pr-eval` gate, install a dedicated status-only GitHub
+App, put its client ID in `AGENTOPS_STATUS_APP_CLIENT_ID`, and keep
+`AGENTOPS_STATUS_APP_PRIVATE_KEY` in the protected evaluator environment.
+Select that App as the required status's **expected source** in the branch
+rule/ruleset. Do not select "any source" or the shared GitHub Actions App.
+Restrict access to this key as carefully as Azure credentials. Without the App,
+evaluation still runs and posts an informational status, but that shared status
+must not be used as proof that the trusted evaluator approved a merge.
+See [GitHub's expected-source rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#require-status-checks-to-pass-before-merging).
+
+#### Azure DevOps
+
+Generation writes two files: the PR entrypoint at
+`.azuredevops/pipelines/agentops-pr.yml` and a closed `extends` template at
+`.azuredevops/templates/agentops-pr-trusted.yml`. A separate repository is
+**not required**. Store the template on an administrator-protected ref in the
+same repository, or use an existing protected template repository.
+For Azure Repos Git, configure an automatic build-validation branch policy
+pointing at the entrypoint to trigger PR runs. Azure Repos does not use the
+YAML `pr` trigger. Keep the exclusive required status policy below as the
+authoritative proof, even when build validation also requires a passing build.
+Replace `YOUR_PROJECT/YOUR_REPOSITORY` in both the wrapper resource and every
+literal trusted checkout, and select the same protected ref throughout.
+The template checks out that literal protected revision, not a repository
+alias or target branch supplied by PR YAML. Its config and scripts govern
+evaluation even if the PR targets another branch.
+
+Create PR-only resources rather than reusing deployment identities: the
+`agentops-pr` variable group and the literal `agentops-pr-azure` service
+connection. The group contains the usual Foundry sandbox values plus
+`AGENTOPS_ADO_REPOSITORY_URL`, `AGENTOPS_ADO_COLLECTION_URI`,
+`AGENTOPS_ADO_PROJECT_ID` and `AGENTOPS_ADO_REPOSITORY_ID`. These are the approved
+HTTPS source Git URL, collection URL, project ID and repository ID. Git/API
+tokens are sent only to these protected destinations, not caller-overridden
+`Build.*` or `System.*` destinations. An optional
+`AGENTOPS_AGENT_PROMPT_FILE` must likewise be administrator-controlled.
+
+On the service connection, add a Required template check binding the exact
+repository, protected ref and `.azuredevops/templates/agentops-pr-trusted.yml`
+path. Restrict updates to the variable group to administrators. Nonsecret
+group values are not protected by access checks. If the group contains secrets,
+its **own** checks must independently enforce the trusted template before
+exposing them. A connection check alone cannot protect a secret group when a
+malicious root YAML removes the connection. Verify that the group's available
+checks reject that negative case, or keep its secrets unavailable to PR builds.
+See [variable group security](https://learn.microsoft.com/en-us/azure/devops/pipelines/library/variable-groups?view=azure-devops).
+Restrict pipeline
+permissions, protect updates to the ref/resources/checks, limit queue-time
+variables, and deny ordinary PR pipelines access to all other privileged
+connections, variable groups, secure files and agent pools. Do not add custom
+step/job/auth/config parameters to the closed template. It rejects free
+execution variables, isolates package installation, and restricts logging
+commands and variables that individual tasks may set. Use disposable hosted
+agents rather than a shared credential-bearing worktree.
+
+Register the **exclusive service connection principal** in the ADO organization
+and grant it the permission to publish PR statuses. Its ADO token publishes
+`agentops/pr-eval` for the verified source SHA/current PR iteration. Configure
+a required status policy with that principal as **Authorized identity**, apply
+the policy immediately and reset it on source changes. Give the Build Service
+only source-read and optional PR-comment permissions, not status authority for
+this policy. A PR can remove protected resources and fake a successful build
+without triggering resource checks, so a build-validation result or a shared
+Build Service status is not sufficient proof.
+
+These are administrator-managed prerequisites, not settings provisioned by
+the generator. Until enforced, do not grant credentials to PR execution or
+treat its result as a secure merge gate. The same-repository design depends
+on [Required template checks](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/approvals?view=azure-devops#required-template),
+[closed security templates](https://learn.microsoft.com/en-us/azure/devops/pipelines/security/templates?view=azure-devops)
+and [identity-bound status policies](https://learn.microsoft.com/en-us/azure/devops/repos/git/pr-status-policy?view=azure-devops).
+
+Candidate prompts and dataset rows still influence the agent and its tools.
+This separation prevents CI code/configuration from selecting credential
+destinations, not general prompt injection. Keep the evaluation Foundry project
+and tools sandboxed with least privilege, no production data and no production
+deployment rights.
+
 ### 1. Repository variables (OIDC)
 
 In Settings → Secrets and variables → Actions → **Variables**, add:

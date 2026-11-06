@@ -31,6 +31,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -1166,20 +1167,21 @@ class TargetResolution:
 def _looks_like_foundry_url(url: str) -> bool:
     """Return ``True`` when ``url`` matches a Foundry hosted endpoint pattern.
 
-    Heuristic - Foundry URLs include the segment ``/agents/`` and the host
-    ends in a Foundry-recognized domain. We err on the side of accepting more
-    URLs as Foundry hosted (the user can force ``http-json`` via ``protocol``).
+    This classifies a hostname, not a credential destination allowlist.
+    Explicit protocols support private/custom hosts without trusting text
+    in a URL's path, query, userinfo, or an attacker-controlled suffix.
     """
-    lowered = url.lower()
+    hostname = (urlsplit(url).hostname or "").lower().rstrip(".")
     foundry_domains = (
         ".azure.com",
+        ".azure.us",
+        ".azure.cn",
         ".azureml.ms",
-        ".cognitiveservices.azure.com",
-        ".services.ai.azure.com",
-        ".inference.ml.azure.com",
         ".azurewebsites.net",  # rare; users can override
+        ".azurewebsites.us",
+        ".chinacloudsites.cn",
     )
-    return any(domain in lowered for domain in foundry_domains)
+    return any(hostname.endswith(domain) for domain in foundry_domains)
 
 
 #: Matches the ``/agents/<name>/versions/<version>`` segment pair that Foundry
@@ -1358,7 +1360,9 @@ def classify_agent(
 
     lowered = raw.lower()
     if lowered.startswith(("http://", "https://")):
-        if _looks_like_foundry_url(raw):
+        if protocol in {"responses", "invocations"} or (
+            protocol != "http-json" and _looks_like_foundry_url(raw)
+        ):
             resolved_protocol: Protocol = protocol or "responses"
             if resolved_protocol not in {"responses", "invocations"}:
                 raise ValueError(
