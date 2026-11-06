@@ -70,9 +70,7 @@ def _patch_urlopen(monkeypatch, response, captured: Optional[Dict[str, Any]] = N
             )
         yield response
 
-    # urlopen is used as ``with urllib.request.urlopen(...) as r``; a context
-    # manager factory mirrors the stdlib contract.
-    monkeypatch.setattr(invocations.urllib.request, "urlopen", _fake)
+    monkeypatch.setattr(invocations, "_open_http", _fake)
 
 
 def _invoke(config: AgentOpsConfig, row: Dict[str, Any]) -> InvocationResult:

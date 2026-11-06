@@ -24,7 +24,7 @@
 name: AgentOps PR
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - develop
       - "release/**"
@@ -39,11 +39,15 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  statuses: write
   id-token: write
 
 concurrency:
-  group: agentops-pr-${{ github.workflow }}-${{ github.ref }}
+  group: agentops-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  AGENTOPS_PR_CONFIG: ${{ inputs.config || 'agentops.yaml' }}
 
 jobs:
   stage-candidate:
@@ -54,15 +58,11 @@ jobs:
     environment: __ENV_NAME__
     timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout trusted base
         uses: actions/checkout@v6
-
-      - name: Azure login (OIDC)
-        uses: azure/login@v3
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -78,13 +78,22 @@ jobs:
         run: |
           uv pip install --system "agentops-accelerator[cockpit]__AGENTOPS_INSTALL_SPEC__"
 
+__PR_INPUT_STEPS__
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Create candidate agent version from prompt_file
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
-          AGENTOPS_AGENT_PROMPT_FILE: ${{ vars.AGENTOPS_AGENT_PROMPT_FILE || '' }}
+          AGENTOPS_AGENT_PROMPT_FILE: .agentops/pr-input/prompt.txt
         run: |
-          python -m agentops.pipeline.prompt_deploy stage \
-            --config "${{ inputs.config || 'agentops.yaml' }}" \
+          python -I -m agentops.pipeline.prompt_deploy stage \
+            --config "$AGENTOPS_PR_CONFIG" \
             --environment "__ENV_NAME__" \
             --out ".agentops/deployments/foundry-agent.json" \
             --eval-config ".agentops/deployments/agentops.candidate.yaml"
@@ -98,6 +107,8 @@ jobs:
             .agentops/deployments/agentops.candidate.yaml
           if-no-files-found: error
 
+__PR_STAGE_FAILURE_STATUS__
+
   eval:
     name: __EVAL_JOB_NAME__
     needs: stage-candidate
@@ -105,21 +116,17 @@ jobs:
     environment: __ENV_NAME__
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout trusted base
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
 
       - name: Download candidate deployment record
         uses: actions/download-artifact@v7
         with:
           name: foundry-agent-__ENV_KEY__-candidate
           path: .agentops/deployments
-
-      - name: Azure login (OIDC)
-        uses: azure/login@v3
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -135,10 +142,19 @@ jobs:
         run: |
           uv pip install --system "agentops-accelerator[cockpit]__AGENTOPS_INSTALL_SPEC__"
 
+__PR_INPUT_STEPS__
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
 __EVAL_STEPS__
 
       - name: Generate release evidence
-        if: always()
+        if: always() && steps.pr_input.outcome == 'success'
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
           AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
@@ -182,7 +198,7 @@ __EVAL_STEPS__
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment AgentOps report on PR
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request_target'
         uses: actions/github-script@v8
         with:
           script: |
@@ -208,3 +224,5 @@ __EVAL_STEPS__
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
+
+__PR_STATUS_STEP__

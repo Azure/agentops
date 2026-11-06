@@ -623,7 +623,9 @@ def _detect_pr_stage() -> Optional[str]:
     DevOps (``BUILD_REASON == 'PullRequest'``).
     """
 
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+    if os.environ.get("AGENTOPS_PR_NUMBER", "").isdigit():
+        return os.environ["AGENTOPS_PR_NUMBER"]
+    if os.environ.get("GITHUB_EVENT_NAME") in {"pull_request", "pull_request_target"}:
         ref = os.environ.get("GITHUB_REF", "")
         # ``refs/pull/<N>/merge`` or ``refs/pull/<N>/head``.
         if ref.startswith("refs/pull/"):
@@ -648,7 +650,8 @@ def _detect_pr_stage() -> Optional[str]:
 
 def _git_sha() -> str:
     return (
-        os.environ.get("GITHUB_SHA")
+        os.environ.get("AGENTOPS_PR_SHA")
+        or os.environ.get("GITHUB_SHA")
         or os.environ.get("BUILD_SOURCEVERSION")
         or os.environ.get("Build.SourceVersion")
         or ""
@@ -687,7 +690,10 @@ def _write_candidate_eval_config(
         dataset_path = dataset_reference.local_path or Path(str(config.dataset))
         if not dataset_path.is_absolute():
             dataset_path = (source_config_path.parent / dataset_path).resolve()
-        data["dataset"] = str(dataset_path)
+        try:
+            data["dataset"] = os.path.relpath(dataset_path, destination.parent.resolve())
+        except ValueError:  # Paths on different Windows drives cannot be relative.
+            data["dataset"] = str(dataset_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     save_yaml(destination, data)
 

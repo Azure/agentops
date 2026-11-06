@@ -24,7 +24,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from http.client import HTTPMessage, HTTPResponse
+from typing import Any, Dict, IO, List, Optional
 
 from agentops.core.agentops_config import AgentOpsConfig, TargetResolution
 from agentops.pipeline.diagnostics import with_tenant_mismatch_guidance
@@ -201,6 +202,39 @@ def _row_input(row: Dict[str, Any]) -> str:
     return str(value)
 
 
+def _http_origin(url: str) -> tuple[str, str, int]:
+    parts = urllib.parse.urlsplit(url)
+    port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
+    return parts.scheme.lower(), (parts.hostname or "").lower(), port
+
+
+class _SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int,
+        msg: str, headers: HTTPMessage, newurl: str,
+    ) -> urllib.request.Request | None:
+        if _http_origin(req.full_url) != _http_origin(newurl):
+            raise RuntimeError(
+                "Refusing an authenticated HTTP redirect to another origin. "
+                "Configure the final trusted endpoint directly."
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_http(request: urllib.request.Request, *, timeout: float) -> HTTPResponse:
+    # Custom headers can carry credentials under arbitrary names.
+    public_headers = {"content-type": "application/json"}
+    authenticated = any(
+        public_headers.get(name.lower()) != value
+        for name, value in request.header_items()
+    )
+    if authenticated:
+        return urllib.request.build_opener(_SameOriginRedirectHandler()).open(
+            request, timeout=timeout
+        )
+    return urllib.request.urlopen(request, timeout=timeout)  # noqa: S310
+
+
 def _http_request_json(
     *,
     method: str,
@@ -216,7 +250,7 @@ def _http_request_json(
     last_exc: Optional[BaseException] = None
     for attempt in range(1, 4):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            with _open_http(request, timeout=timeout) as response:
                 payload = response.read().decode("utf-8")
             break
         except urllib.error.HTTPError as exc:
@@ -263,7 +297,7 @@ def _http_request_stream(
     last_exc: Optional[BaseException] = None
     for attempt in range(1, 4):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            with _open_http(request, timeout=timeout) as response:
                 # HTTPResponse is iterable line-by-line; joining restores the
                 # full body (including newlines) for both sse and text modes.
                 chunks = [line.decode("utf-8", errors="replace") for line in response]

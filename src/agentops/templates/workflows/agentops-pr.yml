@@ -14,7 +14,7 @@
 name: AgentOps PR
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - develop
       - "release/**"
@@ -29,11 +29,15 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  statuses: write
   id-token: write
 
 concurrency:
-  group: agentops-pr-${{ github.workflow }}-${{ github.ref }}
+  group: agentops-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+env:
+  AGENTOPS_PR_CONFIG: ${{ inputs.config || 'agentops.yaml' }}
 
 jobs:
   eval:
@@ -44,15 +48,13 @@ jobs:
     environment: dev
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      # Never checkout or execute the PR. The trusted workflow reads only
+      # explicitly selected data blobs from the immutable candidate commit.
+      - name: Checkout trusted base
         uses: actions/checkout@v6
-
-      - name: Azure login (OIDC)
-        uses: azure/login@v3
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -71,10 +73,19 @@ jobs:
         run: |
           uv pip install --system "agentops-accelerator[cockpit]__AGENTOPS_INSTALL_SPEC__"
 
+__PR_INPUT_STEPS__
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
 __EVAL_STEPS__
 
       - name: Generate release evidence
-        if: always()
+        if: always() && steps.pr_input.outcome == 'success'
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
           AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
@@ -118,7 +129,7 @@ __EVAL_STEPS__
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment AgentOps report on PR
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request_target'
         uses: actions/github-script@v8
         with:
           script: |
@@ -144,3 +155,5 @@ __EVAL_STEPS__
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
+
+__PR_STATUS_STEP__
