@@ -1,3 +1,8 @@
+---
+hide:
+  - navigation
+---
+
 # AgentOps What's new
 
 Explore major updates by month, or read the [full GitHub release notes](https://github.com/Azure/agentops/releases) for all changes and fixes.
@@ -13,7 +18,6 @@ Explore major updates by month, or read the [full GitHub release notes](https://
 | Release | Highlights |
 | --- | --- |
 | [v0.15.0](https://github.com/Azure/agentops/releases/tag/v0.15.0) | Added recipe-based [azd evaluation integration](evaluation.md#delegating-to-azd) for `azd ai eval`, preserving AgentOps results and threshold gates without changing existing `azd ai agent eval` recipes. The new path requires the preview `azure.ai.evaluations` extension, which was not yet publicly available at release. |
-| [v0.14.0](https://github.com/Azure/agentops/releases/tag/v0.14.0) | Removed hosted Cockpit, `agentops cockpit deploy`, the Observe UI and its APIs. Use the [local, read-only Cockpit](operate.md#cockpit) for readiness and evaluation history, and [Foundry or Azure Monitor](foundry-ops-workbook.md) for runtime observability. |
 
 ## August 2026
 
