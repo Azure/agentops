@@ -471,8 +471,10 @@ def _restrict_ado_pr_logging(content: str) -> str:
         variables: tuple[str, ...]
         if "Prepare trusted data-only PR inputs" in body:
             variables = ("AGENTOPS_PR_PREPARED", "AGENTOPS_PR_SHA", "AGENTOPS_PR_NUMBER")
+        elif re.search(r"(?m)^[ \t]*displayName: Prepare AgentOps cloud eval config$", body):
+            variables = ("AGENTOPS_CI_CONFIG",)
         elif "task.setvariable variable=AGENTOPS_EVAL_EXIT_CODE" in body:
-            variables = ("AGENTOPS_EVAL_EXIT_CODE", "AGENTOPS_CI_CONFIG")
+            variables = ("AGENTOPS_EVAL_EXIT_CODE",)
         elif "officialPreflight" in body:
             variables = ("official*",)
         else:

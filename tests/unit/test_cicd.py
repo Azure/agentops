@@ -968,6 +968,48 @@ def test_azure_devops_pipelines_stay_valid_yaml_for_every_eval_runner(
             assert line.split(":", 1)[0].isidentifier(), f"{rel}:{number}: {line}"
 
 
+@pytest.mark.parametrize("deploy_mode", ["placeholder", "prompt-agent"])
+def test_ado_pr_cloud_config_output_is_allowed_only_for_its_producer(
+    tmp_path: Path, deploy_mode: str,
+) -> None:
+    _write_cloud_eval_project(tmp_path)
+    result = generate_cicd_workflows(
+        directory=tmp_path, platform="azure-devops", kinds=["pr"],
+        deploy_mode=deploy_mode,
+    )
+    assert result.eval_runner == AGENTOPS_CLOUD_RUNNER
+    stages = _read_yaml(tmp_path / _ADO_PR)["stages"]
+    eval_stage = next(stage for stage in stages if stage.get("stage") == "eval")
+    steps = eval_stage["jobs"][0]["steps"]
+    producer = next(
+        step for step in steps
+        if step.get("displayName") == "Prepare AgentOps cloud eval config"
+    )
+    consumer = next(
+        step for step in steps
+        if step.get("displayName") == "Run AgentOps Foundry cloud eval"
+    )
+    assert producer["target"] == {
+        "commands": "restricted", "settableVariables": ["AGENTOPS_CI_CONFIG"],
+    }
+    assert "task.setvariable variable=AGENTOPS_CI_CONFIG" in producer["bash"]
+    assert "AGENTOPS_EVAL_EXIT_CODE" not in producer["bash"]
+    assert '--config "$(AGENTOPS_CI_CONFIG)"' in consumer["inputs"]["inlineScript"]
+    assert consumer["target"] == {
+        "commands": "restricted", "settableVariables": ["AGENTOPS_EVAL_EXIT_CODE"],
+    }
+    for step in steps:
+        if step is not producer:
+            assert "AGENTOPS_CI_CONFIG" not in step.get("target", {}).get("settableVariables", [])
+    if deploy_mode == "prompt-agent":
+        candidate_stage = next(stage for stage in stages if stage.get("stage") == "stage_candidate")
+        candidate = next(
+            step for step in candidate_stage["jobs"][0]["steps"]
+            if step.get("displayName") == "Create candidate agent version from prompt_file"
+        )
+        assert candidate["target"] == {"commands": "restricted", "settableVariables": []}
+
+
 def test_official_eval_prepare_step_forwards_the_agent_override(tmp_path: Path) -> None:
     """The official runner must honor `--agent` / `AGENTOPS_AGENT` like the others.
 
