@@ -5,6 +5,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-11-06
+
+### Changed
+- **Refresh the E2E sample memory dependency (#546).** Update `mem0ai` from
+  2.0.5 to 2.0.18 in the containerized sample's requirements.
+
 ### Security
 - **Trusted PR evaluation (#499).** Generated GitHub PR gates execute a trusted
   base checkout and import only immutable candidate dataset/prompt data. Azure
