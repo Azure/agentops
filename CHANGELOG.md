@@ -18,6 +18,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   Trusted Publishing, and the stable Marketplace approval gate.
 - **Refresh documentation tooling.** Update `mkdocs-material` to 9.8.0.
 
+### Fixed
+- **Register every bundled VS Code skill.** Align the extension's `chatSkills`
+  manifest with the seven canonical skills already packaged, registering
+  `agentops-agent` and `agentops-governance` and removing references to three
+  absent legacy skills. Add a contract check to prevent manifest drift.
+
 ### Removed
 - **Automatic issue type classification.** Remove the repository's optional
   issue-classification workflow and its generated files. New issues are no

@@ -43,13 +43,10 @@
         "path": "./skills/agentops-report/SKILL.md"
       },
       {
-        "path": "./skills/agentops-regression/SKILL.md"
+        "path": "./skills/agentops-agent/SKILL.md"
       },
       {
-        "path": "./skills/agentops-trace/SKILL.md"
-      },
-      {
-        "path": "./skills/agentops-monitor/SKILL.md"
+        "path": "./skills/agentops-governance/SKILL.md"
       },
       {
         "path": "./skills/agentops-workflow/SKILL.md"
