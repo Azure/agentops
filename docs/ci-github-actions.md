@@ -211,9 +211,16 @@ tokens are sent only to these protected destinations, not caller-overridden
 `Build.*` or `System.*` destinations. An optional
 `AGENTOPS_AGENT_PROMPT_FILE` must likewise be administrator-controlled.
 
-On **both** protected resources, add a Required template check binding the
-exact repository, protected ref and
-`.azuredevops/templates/agentops-pr-trusted.yml` path. Restrict pipeline
+On the service connection, add a Required template check binding the exact
+repository, protected ref and `.azuredevops/templates/agentops-pr-trusted.yml`
+path. Restrict updates to the variable group to administrators. Nonsecret
+group values are not protected by access checks. If the group contains secrets,
+its **own** checks must independently enforce the trusted template before
+exposing them. A connection check alone cannot protect a secret group when a
+malicious root YAML removes the connection. Verify that the group's available
+checks reject that negative case, or keep its secrets unavailable to PR builds.
+See [variable group security](https://learn.microsoft.com/en-us/azure/devops/pipelines/library/variable-groups?view=azure-devops).
+Restrict pipeline
 permissions, protect updates to the ref/resources/checks, limit queue-time
 variables, and deny ordinary PR pipelines access to all other privileged
 connections, variable groups, secure files and agent pools. Do not add custom

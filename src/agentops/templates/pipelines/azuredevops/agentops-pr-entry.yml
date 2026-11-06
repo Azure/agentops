@@ -1,8 +1,9 @@
 # AgentOps - PR entrypoint using an enforced trusted template
 #
 # Configure the repository below and keep its template ref protected.
-# The agentops-pr-azure service connection and agentops-pr variable group
-# MUST require this repository/ref/template via a Required template check.
+# The agentops-pr-azure connection MUST enforce this exact repo/ref/template.
+# Keep group updates admin-only. Any group secrets need independent checks
+# enforcing the same template, even if malicious YAML removes the connection.
 # Require agentops/pr-eval from the connection's exclusive identity, not a
 # Build Service status or this pipeline's build result alone.
 trigger: none
