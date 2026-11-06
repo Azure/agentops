@@ -5,6 +5,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Removed
+- **Automatic issue type classification.** Remove the repository's optional
+  issue-classification workflow and its generated files. New issues are no
+  longer classified automatically. Evaluation, CI, and release workflows are
+  unchanged.
+
 ## [0.16.0] - 2026-10-14
 
 ### Added
