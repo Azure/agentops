@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-11-06
+
 ### Security
 - **Trusted PR evaluation (#499).** Generated GitHub PR gates execute a trusted
   base checkout and import only immutable candidate dataset/prompt data. Azure
