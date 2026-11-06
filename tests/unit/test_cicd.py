@@ -133,7 +133,7 @@ def test_github_templates_include_optional_governance_gates(tmp_path: Path) -> N
         ]
         if rel == _PR_PATH:
             assert redteam_lines == [
-                "agentops redteam run --config \"${{ inputs.config || 'agentops.yaml' }}\""
+                'agentops redteam run --config "$AGENTOPS_PR_CONFIG"'
             ]
         else:
             assert redteam_lines == ['agentops redteam run --config "agentops.yaml"']
@@ -460,7 +460,7 @@ def test_azure_devops_pr_template_autodetects_committed_baseline(
         directory=tmp_path, kinds=["pr"], platform="azure-devops"
     )
     content = (
-        tmp_path / ".azuredevops/pipelines/agentops-pr.yml"
+        tmp_path / _ADO_PR
     ).read_text(encoding="utf-8")
 
     assert 'BASELINE_ARG=""' in content
@@ -923,7 +923,8 @@ def test_azure_devops_azd_eval_stage_configures_azd_auth(tmp_path: Path) -> None
         assert "curl -fsSL https://aka.ms/install-azd.sh | bash" in section
         assert 'azd extension install azure.ai.agents --version "' in section
         assert 'azd config set auth.useAzCliAuth "true"' in section
-        assert "azureSubscription: $(AZURE_SERVICE_CONNECTION)" in section
+        connection = "agentops-pr-azure" if kind == "pr" else "$(AZURE_SERVICE_CONNECTION)"
+        assert f"azureSubscription: {connection}" in section
         # GitHub Actions expression syntax must never leak into ADO output.
         assert "${{" not in section
 
@@ -965,6 +966,48 @@ def test_azure_devops_pipelines_stay_valid_yaml_for_every_eval_runner(
             if not line or line[0].isspace() or line.startswith("#"):
                 continue
             assert line.split(":", 1)[0].isidentifier(), f"{rel}:{number}: {line}"
+
+
+@pytest.mark.parametrize("deploy_mode", ["placeholder", "prompt-agent"])
+def test_ado_pr_cloud_config_output_is_allowed_only_for_its_producer(
+    tmp_path: Path, deploy_mode: str,
+) -> None:
+    _write_cloud_eval_project(tmp_path)
+    result = generate_cicd_workflows(
+        directory=tmp_path, platform="azure-devops", kinds=["pr"],
+        deploy_mode=deploy_mode,
+    )
+    assert result.eval_runner == AGENTOPS_CLOUD_RUNNER
+    stages = _read_yaml(tmp_path / _ADO_PR)["stages"]
+    eval_stage = next(stage for stage in stages if stage.get("stage") == "eval")
+    steps = eval_stage["jobs"][0]["steps"]
+    producer = next(
+        step for step in steps
+        if step.get("displayName") == "Prepare AgentOps cloud eval config"
+    )
+    consumer = next(
+        step for step in steps
+        if step.get("displayName") == "Run AgentOps Foundry cloud eval"
+    )
+    assert producer["target"] == {
+        "commands": "restricted", "settableVariables": ["AGENTOPS_CI_CONFIG"],
+    }
+    assert "task.setvariable variable=AGENTOPS_CI_CONFIG" in producer["bash"]
+    assert "AGENTOPS_EVAL_EXIT_CODE" not in producer["bash"]
+    assert '--config "$(AGENTOPS_CI_CONFIG)"' in consumer["inputs"]["inlineScript"]
+    assert consumer["target"] == {
+        "commands": "restricted", "settableVariables": ["AGENTOPS_EVAL_EXIT_CODE"],
+    }
+    for step in steps:
+        if step is not producer:
+            assert "AGENTOPS_CI_CONFIG" not in step.get("target", {}).get("settableVariables", [])
+    if deploy_mode == "prompt-agent":
+        candidate_stage = next(stage for stage in stages if stage.get("stage") == "stage_candidate")
+        candidate = next(
+            step for step in candidate_stage["jobs"][0]["steps"]
+            if step.get("displayName") == "Create candidate agent version from prompt_file"
+        )
+        assert candidate["target"] == {"commands": "restricted", "settableVariables": []}
 
 
 def test_official_eval_prepare_step_forwards_the_agent_override(tmp_path: Path) -> None:
@@ -1274,7 +1317,8 @@ def test_cli_next_steps_for_pr_only_do_not_request_deploy_envs(
 
 
 _ADO_DIR = ".azuredevops/pipelines"
-_ADO_PR = f"{_ADO_DIR}/agentops-pr.yml"
+_ADO_PR_INPUT = f"{_ADO_DIR}/agentops-pr.yml"
+_ADO_PR = ".azuredevops/templates/agentops-pr-trusted.yml"
 _ADO_DEV = f"{_ADO_DIR}/agentops-deploy-dev.yml"
 _ADO_QA = f"{_ADO_DIR}/agentops-deploy-qa.yml"
 _ADO_PROD = f"{_ADO_DIR}/agentops-deploy-prod.yml"
@@ -1300,15 +1344,17 @@ def test_azure_devops_pr_template_uses_ado_idioms(tmp_path: Path) -> None:
     content = (tmp_path / _ADO_PR).read_text(encoding="utf-8")
 
     # ADO-specific idioms.
-    assert "trigger: none" in content
-    assert "pr:" in content
+    entry = (tmp_path / _ADO_PR_INPUT).read_text(encoding="utf-8")
+    assert "trigger: none" in entry
+    assert "pr:" in entry
+    assert "extends:" in entry
     assert "pool:" in content
     assert "vmImage: ubuntu-latest" in content
     assert "AzureCLI@2" in content
     assert "UsePythonVersion@0" in content
     # Variable group + service connection wiring.
-    assert "group: agentops" in content
-    assert "AZURE_SERVICE_CONNECTION" in content
+    assert "group: agentops-pr" in content
+    assert "azureSubscription: agentops-pr-azure" in content
     # PR comment marker preserved across platforms.
     assert "<!-- agentops-pr-report -->" in content
     # Default --doctor-gate is critical.
@@ -1603,8 +1649,9 @@ def test_azure_devops_prompt_agent_pr_template_stages_candidate(tmp_path: Path) 
     assert "prompt_deploy record" not in content
     assert "--severity-fail critical" in content
     # Pipeline uses pr: trigger, not push
-    assert "trigger: none" in content
-    assert "pr:" in content
+    entry = (tmp_path / _ADO_PR_INPUT).read_text(encoding="utf-8")
+    assert "trigger: none" in entry
+    assert "pr:" in entry
 
 
 def test_azure_devops_prompt_agent_pr_template_is_valid_yaml(tmp_path: Path) -> None:
@@ -1641,6 +1688,42 @@ def test_azure_devops_prompt_agent_pr_template_propagates_doctor_gate(tmp_path: 
 # ---------------------------------------------------------------------------
 # Version-pinning of the AgentOps install spec
 # ---------------------------------------------------------------------------
+
+def test_ado_pr_gate_requires_protected_template_and_exclusive_status_identity(tmp_path: Path) -> None:
+    generate_cicd_workflows(
+        directory=tmp_path, platform="azure-devops", kinds=["pr"],
+    )
+    entry = (tmp_path / _ADO_PR_INPUT).read_text(encoding="utf-8")
+    content = (tmp_path / _ADO_PR).read_text(encoding="utf-8")
+    assert "agentops-pr-trusted.yml@agentops_trusted" in entry
+    assert "ref: refs/heads/develop" in entry
+    assert "parameters:" not in entry
+    assert "parameters:" not in content
+    assert "checkout: git://YOUR_PROJECT/YOUR_REPOSITORY@refs/heads/develop" in content
+    assert "checkout: self" not in content
+    assert "checkout: agentops_trusted" not in content
+    assert "commands: restricted" in content
+    assert "settableVariables: []" in content
+    assert "each variable in variables" in content
+    assert "AGENTOPS_PR_GIT_URL: $(AGENTOPS_ADO_REPOSITORY_URL)" in content
+    assert "AGENTOPS_ADO_COLLECTION_URI: $(AGENTOPS_ADO_COLLECTION_URI)" in content
+    status = content.split("displayName: Publish required AgentOps PR status", 1)[1]
+    assert "azureSubscription: agentops-pr-azure" in status
+    assert "SYSTEM_ACCESSTOKEN" not in status
+
+
+def test_github_pr_gate_has_optional_exclusive_status_app(tmp_path: Path) -> None:
+    generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+    assert "pull_request_target:" in content
+    assert "github.event.pull_request.base.sha" in content
+    assert "persist-credentials: false" in content
+    assert "AGENTOPS_STATUS_APP_CLIENT_ID" in content
+    assert "AGENTOPS_STATUS_APP_PRIVATE_KEY" in content
+    assert "permission-statuses: write" in content
+    assert "steps.status_token.outputs.token || github.token" in content
+    assert "sha: context.payload.pull_request.head.sha" in content
+
 
 def test_agentops_install_spec_pins_clean_release() -> None:
     from agentops.services.cicd import _agentops_install_spec
@@ -1694,7 +1777,7 @@ def test_workflow_install_lines_pin_to_release_version(tmp_path: Path) -> None:
         tmp_path / _DEV_PATH,
         tmp_path / _QA_PATH,
         tmp_path / _PROD_PATH,
-        tmp_path / ".azuredevops/pipelines/agentops-pr.yml",
+        tmp_path / _ADO_PR,
         tmp_path / ".azuredevops/pipelines/agentops-deploy-dev.yml",
         tmp_path / ".azuredevops/pipelines/agentops-deploy-qa.yml",
         tmp_path / ".azuredevops/pipelines/agentops-deploy-prod.yml",

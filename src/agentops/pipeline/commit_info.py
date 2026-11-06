@@ -16,7 +16,7 @@ from typing import Literal, Optional
 
 from agentops.core.results import CommitInfo
 
-_CI_SHA_ENV_VARS = ("GITHUB_SHA", "BUILD_SOURCEVERSION")
+_CI_SHA_ENV_VARS = ("AGENTOPS_PR_SHA", "GITHUB_SHA", "BUILD_SOURCEVERSION")
 _FIELD_SEP = "\x1f"
 _GIT_SHOW_FORMAT = f"%H{_FIELD_SEP}%h{_FIELD_SEP}%s{_FIELD_SEP}%an{_FIELD_SEP}%aI"
 _GIT_TIMEOUT_SECONDS = 5
@@ -52,7 +52,7 @@ def _pull_request_head_sha() -> Optional[str]:
 
 
 def _ci_git_sha(*, workspace: Optional[Path] = None) -> Optional[str]:
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+    if os.environ.get("GITHUB_EVENT_NAME") in {"pull_request", "pull_request_target"}:
         head_sha = _pull_request_head_sha()
         # The generated PR workflow's default `actions/checkout` has no
         # `ref`/`fetch-depth` override, so it checks out only the

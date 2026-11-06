@@ -106,10 +106,9 @@ class TestClassifyAgent:
         assert result.kind == "foundry_hosted"
         assert result.protocol == "invocations"
 
-    def test_foundry_hosted_rejects_http_json_protocol(self) -> None:
+    def test_foundry_hosted_allows_explicit_http_json_protocol(self) -> None:
         url = "https://my-project.services.ai.azure.com/agents/foo"
-        with pytest.raises(ValueError, match="responses"):
-            classify_agent(url, protocol="http-json")
+        assert classify_agent(url, protocol="http-json").kind == "http_json"
 
     def test_http_json_default_protocol(self) -> None:
         url = "https://my-app.azurecontainerapps.io/chat"
@@ -117,10 +116,25 @@ class TestClassifyAgent:
         assert result.kind == "http_json"
         assert result.protocol == "http-json"
 
-    def test_http_json_rejects_responses_protocol(self) -> None:
+    def test_custom_host_allows_explicit_responses_protocol(self) -> None:
         url = "https://my-app.azurecontainerapps.io/chat"
-        with pytest.raises(ValueError, match="http-json"):
-            classify_agent(url, protocol="responses")
+        assert classify_agent(url, protocol="responses").kind == "foundry_hosted"
+
+    @pytest.mark.parametrize("url", [
+        "https://receiver.invalid/.services.ai.azure.com/agents/bot",
+        "https://receiver.invalid/?target=https://a.services.ai.azure.com",
+        "https://a.services.ai.azure.com@receiver.invalid/agents/bot",
+        "https://a.services.ai.azure.com.receiver.invalid/agents/bot",
+    ])
+    def test_foundry_domains_outside_hostname_do_not_enable_auth(self, url) -> None:
+        assert classify_agent(url).kind == "http_json"
+
+    @pytest.mark.parametrize("host", [
+        "a.services.ai.azure.us", "a.services.ai.azure.cn",
+        "a.services.ai.azure.com", "A.SERVICES.AI.AZURE.COM.",
+    ])
+    def test_sovereign_and_normalized_foundry_hosts(self, host) -> None:
+        assert classify_agent(f"https://{host}/agents/bot").kind == "foundry_hosted"
 
     def test_unrecognized_value(self) -> None:
         with pytest.raises(ValueError, match="unrecognized"):
