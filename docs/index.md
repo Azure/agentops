@@ -36,6 +36,8 @@ safety framework, the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your
 CI/CD platform into one release loop. Every result is packaged into a stable
 evidence pack that proves a release is ready for production.
 
+See [What's new](whats-new.md) for major updates by month.
+
 !!! tip "Install in 60 seconds"
     Install the package, bootstrap a workspace, and drop the skills into your
     coding agent.

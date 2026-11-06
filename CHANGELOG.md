@@ -5,6 +5,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **Refresh locked Python dependencies.** Update `aiohttp`, `certifi`,
+  `filelock`, `mcp`, `multidict`, `nltk`, `oauthlib`, and the OpenTelemetry
+  dependency family, including their resolved transitive dependencies.
+- **Refresh pinned CI and publishing actions.** Update `actions/setup-python`
+  to 7.1.0, `astral-sh/setup-uv` to 10.3.3, `pypa/gh-action-pypi-publish` to
+  1.14.3, `actions/setup-node` to 7.1.0, `actions/upload-artifact` to 7.0.2,
+  and `actions/download-artifact` to 8.0.2. Preserve full commit SHA pins,
+  Trusted Publishing, and the stable Marketplace approval gate.
+- **Refresh documentation tooling.** Update `mkdocs-material` to 9.8.0.
+
 ### Removed
 - **Automatic issue type classification.** Remove the repository's optional
   issue-classification workflow and its generated files. New issues are no
