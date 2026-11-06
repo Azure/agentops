@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-06
+
 ### Changed
 - **Refresh locked Python dependencies.** Update `aiohttp`, `certifi`,
   `filelock`, `mcp`, `multidict`, `nltk`, `oauthlib`, and the OpenTelemetry
